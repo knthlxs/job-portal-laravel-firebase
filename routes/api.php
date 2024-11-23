@@ -10,20 +10,6 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-// Route for showing all blog posts
-Route::get('/', [TestController::class, 'index']);
-
-// Route for creating a new blog post
-Route::post('/', [TestController::class, 'create']);
-
-// Route for showing a specific blog post by ID
-Route::get('/{id}', [TestController::class, 'show']); // Show a specific blog post by ID
-
-// Route for editing a blog post by ID
-Route::put('/{id}', [TestController::class, 'edit']); // Edit a blog post by ID
-
-// Route for deleting a blog post by ID
-Route::delete('/{id}', [TestController::class, 'delete']); // Delete a blog post by ID
 
 Route::post('/login', [AuthController::class, 'signIn']);
 Route::post('/register', [AuthController::class, 'signUp']);

@@ -47,27 +47,6 @@ class AuthController extends Controller
         );
     }
 
-    // public function downloadFile($fileName)
-    // {
-    //     try {
-    //         // Get the Firebase Storage object
-    //         $bucket = $this->storage->getBucket();
-    //         $object = $bucket->object($fileName);
-
-    //         // Fetch the file's content
-    //         $content = $object->downloadAsString(); // Downloads the file as a string
-
-    //         // Set the correct file headers for the response
-    //         return response($content, 200)
-    //             ->header('Content-Type', 'application/pdf') // Or whatever MIME type the file is
-    //             ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"');
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'error' => 'Could not download file: ' . $e->getMessage()
-    //         ], 400);
-    //     }
-    // }
-
 
     public function getDownloadUrl($fileName)
     {
