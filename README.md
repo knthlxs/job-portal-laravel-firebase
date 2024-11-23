@@ -52,7 +52,7 @@ Follow these steps to set up Firebase for use with your Laravel project:
 
 Clone the project repository to your local machine:
 ```bash
- git clone https://github.com/knthlxs/job-portal-laravel-firebase.git
+git clone https://github.com/knthlxs/job-portal-laravel-firebase.git
 cd job-portal-laravel-firebase 
 ```
 
@@ -70,9 +70,9 @@ cd job-portal-laravel-firebase
 ```
 
 * Publish the Firebase configuration file:
-bash
-~ php artisan vendor:publish --provider="Kreait\Laravel\Firebase\ServiceProvider" --tag=config
-
+```bash
+ php artisan vendor:publish --provider="Kreait\Laravel\Firebase\ServiceProvider" --tag=config
+``` 
 * Place the Firebase service account key JSON file in a secure 
 location (e.g., storage/app/firebase/).
 
@@ -85,11 +85,11 @@ location (e.g., storage/app/firebase/).
 
 * Update the .env file with your app details and Firebase configurations:
 env
-## Firebase Config
-FIREBASE_CREDENTIALS=/storage/app/firebase/<filename>.json
-FIREBASE_DATABASE_URL=https://your-database-name.firebaseio.com/
-FIREBASE_STORAGE_BUCKET=<project-id>.firebasestorage.app
-
+```bash
+FIREBASE_CREDENTIALS=/storage/app/firebase/filemname.json
+FIREBASE_DATABASE_URL=https://linktoyourrealtimedatabase.firebasedatabase.app/
+FIREBASE_STORAGE_BUCKET=your-roject-id.firebasestorage.app
+```
 ### 5. Generate the Application Key
 
 ```bash
