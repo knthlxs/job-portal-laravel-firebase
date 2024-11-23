@@ -70,7 +70,7 @@ class AuthController extends Controller
             'email' => 'required|email',
             'password' => 'required|min:6',
             'user_type' => 'required|in:employee,employer', // Ensure user_type is either 'employee' or 'employer'
-            'resume' => $request->input('user_type') == 'employee' ? 'required|file|mimes:pdf,docx|max:10240' : 'nullable', // Resume is required only for employees
+            'resume' => $request->input('user_type') == 'employee' ? 'required|file|mimes:png,jpeg,jpg|max:10240' : 'nullable', // Resume is required only for employees
         ]);
 
         try {
