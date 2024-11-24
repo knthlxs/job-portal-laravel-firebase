@@ -22,17 +22,15 @@ class AuthController extends Controller
 
     public function signUp(Request $request)
 {
-    // Conditionally validate fields based on the user type
     $validatedData = $request->validate([
         'email' => 'required|email',
         'password' => 'required|min:6',
-        'user_type' => 'required|in:employee,employer', // Ensure user_type is either 'employee' or 'employer'
-        'resume' => $request->input('user_type') == 'employee' ? 'required|file|mimes:png,jpeg,jpg|max:10240' : 'nullable', // Resume is required only for employees
-        'company_logo' => $request->input('user_type') == 'employer' ? 'required|file|mimes:png,jpeg,jpg|max:10240' : 'nullable', // Company logo is required only for employers
+        'user_type' => 'required|in:employee,employer',
+        'resume' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
+        'company_logo' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
     ]);
 
     try {
-        // Create the new user
         $user = $this->auth->createUserWithEmailAndPassword(
             $validatedData['email'],
             $validatedData['password']
@@ -41,9 +39,8 @@ class AuthController extends Controller
         $resumeUrl = null;
         $companyLogoUrl = null;
 
-        // Handle file upload to Firebase Storage based on user type
-        if ($validatedData['user_type'] == 'employee') {
-            // Upload employee resume
+        // Handle resume upload for employees
+        if ($validatedData['user_type'] == 'employee' && $request->hasFile('resume')) {
             $file = $request->file('resume');
             $filePath = $file->getPathname();
             $fileName = 'resumes/' . $user->uid . '/' . time() . '_' . $file->getClientOriginalName();
@@ -55,9 +52,11 @@ class AuthController extends Controller
             );
 
             $object = $bucket->object($fileName);
-            $resumeUrl = $object->signedUrl(new \DateTime('+10 years')); // Long-lived URL
-        } elseif ($validatedData['user_type'] == 'employer') {
-            // Upload employer company logo
+            $resumeUrl = $object->signedUrl(new \DateTime('+10 years'));
+        }
+
+        // Handle company logo upload for employers
+        if ($validatedData['user_type'] == 'employer' && $request->hasFile('company_logo')) {
             $file = $request->file('company_logo');
             $filePath = $file->getPathname();
             $fileName = 'company_logos/' . $user->uid . '/' . time() . '_' . $file->getClientOriginalName();
@@ -69,16 +68,12 @@ class AuthController extends Controller
             );
 
             $object = $bucket->object($fileName);
-            $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years')); // Long-lived URL
+            $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years'));
         }
 
-        // Determine the correct path based on user type
-        $userDataPath = '/users/' . $validatedData['user_type'] . 's'; // '/users/employees' or '/users/employers'
-
-        // Use the Firebase UID as the unique key for storing user data
+        $userDataPath = '/users/' . $validatedData['user_type'] . 's';
         $userData = $this->database->getReference($userDataPath)->getChild($user->uid);
 
-        // Set the user data based on user type
         if ($validatedData['user_type'] == 'employee') {
             $userData->set([
                 'user_type' => 'employee',
@@ -88,22 +83,21 @@ class AuthController extends Controller
                 'phone_number' => $request['phone_number'],
                 'location' => $request['location'],
                 'skills' => $request['skills'],
-                'resume_url' => $resumeUrl, // Store the resume URL
+                'resume_url' => $resumeUrl,
             ]);
         } else {
             $userData->set([
                 'user_type' => 'employer',
                 'company_name' => $request['company_name'],
-                'company_email_address' => $request['company_email_address'],
+                'company_email_address' => $request['email'],
                 'company_phone_number' => $request['company_phone_number'],
                 'company_location' => $request['company_location'],
                 'company_industry' => $request['company_industry'],
                 'contact_person_name' => $request['contact_person_name'],
-                'company_logo_url' => $companyLogoUrl, // Store the company logo URL
+                'company_logo_url' => $companyLogoUrl,
             ]);
         }
 
-        // Return success response with user info
         return response()->json([
             'message' => 'User created successfully',
             'user' => $user

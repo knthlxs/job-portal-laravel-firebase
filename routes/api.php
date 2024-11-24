@@ -33,6 +33,7 @@ Route::prefix('employees')->group(function () {
     Route::post('/', [EmployeeController::class, 'update']); // Update Authenticated Employee's Profile (only for employees)
     Route::delete('/', [EmployeeController::class, 'destroy']); // Delete Authenticated Employee's Profile (only for employees)
     Route::get('/my-applications', [JobApplicationController::class, 'myApplications']); // Get all employee applications (only for employees)
+    Route::post('/update-password', [EmployeeController::class, 'updatePassword']); // Update the authenticated employee's password (only for employees)
 });
 
 // Employee Profile Endpoints (All routes will start at /employers/)
@@ -40,6 +41,7 @@ Route::prefix('employers')->group(function () {
     Route::get('/', [EmployerController::class, 'show']); // Get Authenticated Employer's Profile (only for employers)
     Route::post('/', [EmployerController::class, 'update']); // Update Authenticated Employer's Profile (only for employers)
     Route::delete('/', [EmployerController::class, 'destroy']); // Delete Authenticated Employer's Profile (only for employers)
+    Route::post('/update-password', [EmployerController::class, 'updatePassword']); // Update the authenticated employer's password (only for employers)
 });
 
 // Job Application Endpoints (All routes will start at /employers/{employerId}/jobs/{jobPostingId}/applications/)

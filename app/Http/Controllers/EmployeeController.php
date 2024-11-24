@@ -78,91 +78,101 @@ class EmployeeController extends Controller
      * Update the authenticated employee's details.
      */
     public function update(Request $request)
-    {
-        try {
-            // Verify the user and retrieve their UID
-            $uid = $this->getAuthenticatedUserUid($request);
+{
+    try {
+        // Verify the user and retrieve their UID
+        $uid = $this->getAuthenticatedUserUid($request);
 
-            // Ensure the UID belongs to an employee
-            $this->ensureEmployee($uid);
+        // Ensure the UID belongs to an employee
+        $this->ensureEmployee($uid);
 
-            // Fetch the current data of the employee from Firebase
-            $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
+        // Fetch the current data of the employee from Firebase
+        $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
 
-            if (!$employeeData) {
-                return response()->json(['error' => 'Employee not found'], 404);
-            }
-
-            // Validate input data
-            $validatedData = $request->validate([
-                'full_name' => 'sometimes|string|max:255',
-                'email_address' => 'sometimes|email',
-                'birthday' => 'sometimes|date',
-                'phone_number' => 'sometimes|string|max:15',
-                'location' => 'sometimes|string|max:255',
-                'skills' => 'sometimes|string',
-                'resume' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
-            ]);
-
-            // Handle the new resume upload and deletion of old resume
-            if ($request->resume) {
-                // Delete the old resume if it exists
-                if (!empty($employeeData['resume_url'])) {
-                    $resumeUrl = $employeeData['resume_url'];
-
-                    // Extract the path and delete the file only if the path exists
-                    $path = parse_url($resumeUrl, PHP_URL_PATH);
-                    $fileName = basename($path);
-
-                    // Check if file exists in Firebase Storage
-                    $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
-                    if ($storageObject->exists()) {
-                        $storageObject->delete();
-                    }
-                }
-
-                // Process the new resume file
-                $file = $request->file('resume');
-                $filePath = $file->getPathname();
-                $fileName = 'resumes/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
-
-                try {
-                    $bucket = $this->storage->getBucket();
-                    $object = $bucket->upload(
-                        fopen($filePath, 'r'),
-                        ['name' => $fileName]
-                    );
-
-                    // Generate a long-lived signed URL for the new file
-                    $resumeUrl = $object->signedUrl(new \DateTime('+ 10 years'));
-                } catch (\Exception $e) {
-                    return response()->json(['error' => 'Resume upload failed: ' . $e->getMessage()], 500);
-                }
-            }
-
-            // Prepare the data to be updated
-            $updatedData = [
-                'user_type' => 'employee',
-                'full_name' => $request->input('full_name', $employeeData['full_name']),
-                'email_address' => $request->input('email_address', $employeeData['email_address']),
-                'birthday' => $request->input('birthday', $employeeData['birthday']),
-                'phone_number' => $request->input('phone_number', $employeeData['phone_number']),
-                'location' => $request->input('location', $employeeData['location']),
-                'skills' => $request->input('skills', $employeeData['skills']),
-                'resume_url' => $resumeUrl ?? $employeeData['resume_url'], // Retain existing resume URL
-            ];
-
-            // Update the employee's profile in Firebase
-            $this->database->getReference("/users/employees/{$uid}")->update($updatedData);
-
-            return response()->json([
-                'message' => 'Employee updated successfully',
-                'resume_url' => $updatedData['resume_url'] ?? null
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update employee: ' . $e->getMessage()], 400);
+        if (!$employeeData) {
+            return response()->json(['error' => 'Employee not found'], 404);
         }
+
+        // Validate input data
+        $validatedData = $request->validate([
+            'full_name' => 'sometimes|string|max:255',
+            'email_address' => 'sometimes|email',
+            'birthday' => 'sometimes|date',
+            'phone_number' => 'sometimes|string|max:15',
+            'location' => 'sometimes|string|max:255',
+            'skills' => 'sometimes|string',
+            'resume' => 'sometimes|file|mimes:png,jpeg,jpg,pdf|max:10240',
+        ]);
+
+        // Update email in Firebase Authentication if it has changed
+        if (isset($validatedData['email_address']) && $validatedData['email_address'] !== $employeeData['email_address']) {
+            try {
+                $this->auth->updateUser($uid, ['email' => $validatedData['email_address']]);
+            } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+                return response()->json(['error' => 'Could not update email in Firebase Auth: ' . $e->getMessage()], 400);
+            }
+        }
+
+        // Handle the resume file upload and old resume deletion
+        $resumeUrl = $employeeData['resume_url'] ?? null; // Use existing resume URL or default to null
+
+        if ($request->hasFile('resume')) {
+            // Delete the old resume if it exists
+            if (!empty($resumeUrl)) {
+                $path = parse_url($resumeUrl, PHP_URL_PATH);
+                $fileName = basename($path);
+
+                $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
+                if ($storageObject->exists()) {
+                    $storageObject->delete();
+                }
+            }
+
+            // Process the new resume file
+            $file = $request->file('resume');
+            $filePath = $file->getPathname();
+            $fileName = 'resumes/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+            try {
+                $bucket = $this->storage->getBucket();
+                $object = $bucket->upload(
+                    fopen($filePath, 'r'),
+                    ['name' => $fileName]
+                );
+
+                // Generate a long-lived signed URL for the new file
+                $resumeUrl = $object->signedUrl(new \DateTime('+10 years'));
+            } catch (\Exception $e) {
+                return response()->json(['error' => 'Resume upload failed: ' . $e->getMessage()], 500);
+            }
+        }
+
+        // Prepare the data to be updated
+        $updatedData = [
+            'user_type' => 'employee',
+            'full_name' => $request->input('full_name', $employeeData['full_name']),
+            'email_address' => $request->input('email_address', $employeeData['email_address']),
+            'birthday' => $request->input('birthday', $employeeData['birthday']),
+            'phone_number' => $request->input('phone_number', $employeeData['phone_number']),
+            'location' => $request->input('location', $employeeData['location']),
+            'skills' => $request->input('skills', $employeeData['skills']),
+            'resume_url' => $resumeUrl, // Always use updated or existing resume URL
+        ];
+
+        // Update the employee's profile in Firebase
+        $this->database->getReference("/users/employees/{$uid}")->update($updatedData);
+
+        return response()->json([
+            'message' => 'Employee updated successfully',
+            'resume_url' => $updatedData['resume_url'] ?? null,
+            'updated_data' => $updatedData
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Could not update employee: ' . $e->getMessage()], 400);
     }
+}
+
+
 
     /**
      * Delete the authenticated employee's account.
@@ -218,6 +228,49 @@ class EmployeeController extends Controller
             return response()->json(['error' => 'Resume file not found: ' . $e->getMessage()], 404);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Could not delete employee profile: ' . $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Update the authenticated employee's password.
+     */
+    public function updatePassword(Request $request)
+    {
+        try {
+            // Verify the user and retrieve their UID
+            $uid = $this->getAuthenticatedUserUid($request);
+
+            // Ensure the UID belongs to an employee
+            $this->ensureEmployee($uid);
+
+            // Validate the input
+            $validatedData = $request->validate([
+                'current_password' => 'required|string',
+                'new_password' => 'required|string|min:6|different:current_password',
+                'confirm_password' => 'required|string|min:6|same:new_password',
+            ]);
+
+            // Retrieve the user's email from Firebase Authentication
+            $user = $this->auth->getUser($uid);
+            $email = $user->email;
+
+            // Reauthenticate the user with the current password
+            try {
+                $this->auth->signInWithEmailAndPassword($email, $validatedData['current_password']);
+            } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+                return response()->json(['error' => 'Current password is incorrect'], 401);
+            }
+
+            // Update the password in Firebase Authentication
+            $this->auth->changeUserPassword($uid, $validatedData['new_password']);
+
+            return response()->json(['message' => 'Password updated successfully'], 200);
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
+            return response()->json(['error' => 'Invalid authentication token'], 401);
+        } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
+            return response()->json(['error' => 'Authentication account not found'], 404);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not update password: ' . $e->getMessage()], 400);
         }
     }
 }

@@ -81,97 +81,102 @@ class EmployerController extends Controller
      * Update the authenticated employer's details.
      */
     public function update(Request $request)
-    {
-        try {
-            // Verify the user and retrieve their UID
-            $uid = $this->getAuthenticatedUserUid($request);
+{
+    try {
+        // Verify the user and retrieve their UID
+        $uid = $this->getAuthenticatedUserUid($request);
 
-            // Ensure the UID belongs to an employer
-            $this->ensureEmployer($uid);
+        // Ensure the UID belongs to an employer
+        $this->ensureEmployer($uid);
 
-            // Fetch the current data of the employer from Firebase
-            $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+        // Fetch the current data of the employer from Firebase
+        $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
 
-            if (!$employerData) {
-                return response()->json(['error' => 'Employer not found'], 404);
-            }
-
-            // Validate input data
-            $validatedData = $request->validate([
-                'company_name' => 'sometimes|string|max:255',
-                'company_email_address' => 'sometimes|email',
-                'company_phone_number' => 'sometimes|string|max:15',
-                'company_location' => 'sometimes|string|max:255',
-                'company_industry' => 'sometimes|string|max:255',
-                'contact_person_name' => 'sometimes|string|max:255',
-                'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
-            ]);
-
-            // Handle the new resume upload and deletion of old resume
-            if ($request->company_logo) {
-                // Delete the old resume if it exists
-                if (!empty($employerData['company_logo_url'])) {
-                    $company_logo_url = $employerData['company_logo_url'];
-
-                    // Extract the path and delete the file only if the path exists
-                    $path = parse_url($company_logo_url, PHP_URL_PATH);
-                    $fileName = basename($path);
-
-                    // Check if file exists in Firebase Storage
-                    $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
-                    if ($storageObject->exists()) {
-                        $storageObject->delete();
-                    }
-                }
-
-                // Process the new resume file
-                $file = $request->file('company_logo');
-                $filePath = $file->getPathname();
-                $fileName = 'company_logos/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
-
-                try {
-                    $bucket = $this->storage->getBucket();
-                    $object = $bucket->upload(
-                        fopen($filePath, 'r'),
-                        ['name' => $fileName]
-                    );
-
-                    // Generate a long-lived signed URL for the new file
-                    $company_logo_url = $object->signedUrl(new \DateTime('+ 10 years'));
-                } catch (\Exception $e) {
-                    return response()->json(['error' => 'Company logo upload failed: ' . $e->getMessage()], 500);
-                }
-            }
-
-            // Prepare the data to be updated
-            $updatedData = [
-                'user_type' => 'employer',
-                'company_name' => $request->input('company_name', $employerData['company_name']),
-                'company_email_address' => $request->input('company_email_address', $employerData['company_email_address']),
-                'company_phone_number' => $request->input('company_phone_number', $employerData['company_phone_number']),
-                'company_location' => $request->input('company_location', $employerData['company_location']),
-                'company_industry' => $request->input('company_industry', $employerData['company_industry']),
-                'contact_person_name' => $request->input('contact_person_name', $employerData['contact_person_name']),
-                'company_logo_url' => $company_logo_url ?? $employerData['company_logo_url'],
-            ];
-
-            // // If no valid data to update, return an error
-            // if (empty($updatedData)) {
-            //     return response()->json(['error' => 'No valid data to update'], 400);
-            // }
-
-            // Update the employer's profile in Firebase
-            $this->database->getReference("/users/employers/{$uid}")->update($updatedData);
-
-            return response()->json(['message' => 'Employer updated successfully'], 200);
-        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
-            return response()->json(['error' => 'Invalid authentication token'], 401);
-        } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
-            return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update employer: ' . $e->getMessage()], 400);
+        if (!$employerData) {
+            return response()->json(['error' => 'Employer not found'], 404);
         }
+
+        // Validate input data
+        $validatedData = $request->validate([
+            'company_name' => 'sometimes|string|max:255',
+            'company_email_address' => 'sometimes|email',
+            'company_phone_number' => 'sometimes|string|max:15',
+            'company_location' => 'sometimes|string|max:255',
+            'company_industry' => 'sometimes|string|max:255',
+            'contact_person_name' => 'sometimes|string|max:255',
+            'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
+        ]);
+
+        // Update email in Firebase Authentication if it has changed
+        if (isset($validatedData['company_email_address']) && $validatedData['company_email_address'] !== $employerData['company_email_address']) {
+            try {
+                $this->auth->updateUser($uid, ['email' => $validatedData['company_email_address']]);
+            } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+                return response()->json(['error' => 'Could not update email in Firebase Auth: ' . $e->getMessage()], 400);
+            }
+        }
+
+        // Get the existing company logo URL if it exists
+        $companyLogoUrl = $employerData['company_logo_url'] ?? null;
+
+        // Handle the company logo upload and deletion of old logo
+        if ($request->hasFile('company_logo')) {
+            // Delete the old logo if it exists
+            if ($companyLogoUrl) {
+                $path = parse_url($companyLogoUrl, PHP_URL_PATH);
+                $fileName = basename($path);
+
+                $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
+                if ($storageObject->exists()) {
+                    $storageObject->delete();
+                }
+            }
+
+            // Process the new company logo
+            $file = $request->file('company_logo');
+            $filePath = $file->getPathname();
+            $fileName = 'company_logos/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+            try {
+                $bucket = $this->storage->getBucket();
+                $object = $bucket->upload(
+                    fopen($filePath, 'r'),
+                    ['name' => $fileName]
+                );
+
+                // Generate a long-lived signed URL for the new logo
+                $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years'));
+            } catch (\Exception $e) {
+                return response()->json(['error' => 'Company logo upload failed: ' . $e->getMessage()], 500);
+            }
+        }
+
+        // Prepare the data to be updated
+        $updatedData = [
+            'user_type' => 'employer',
+            'company_name' => $request->input('company_name', $employerData['company_name']),
+            'company_email_address' => $request->input('company_email_address', $employerData['company_email_address']),
+            'company_phone_number' => $request->input('company_phone_number', $employerData['company_phone_number']),
+            'company_location' => $request->input('company_location', $employerData['company_location']),
+            'company_industry' => $request->input('company_industry', $employerData['company_industry']),
+            'contact_person_name' => $request->input('contact_person_name', $employerData['contact_person_name']),
+            'company_logo_url' => $companyLogoUrl,  // Ensure the logo URL is updated if a new one is uploaded
+        ];
+
+        // Update the employer's profile in Firebase
+        $this->database->getReference("/users/employers/{$uid}")->update($updatedData);
+
+        return response()->json(['message' => 'Employer updated successfully', 'employer' => $updatedData, 'company_logo_url' => $companyLogoUrl], 200);
+    } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
+        return response()->json(['error' => 'Invalid authentication token'], 401);
+    } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+        return response()->json(['error' => 'Authentication error'], 401);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Could not update employer: ' . $e->getMessage()], 400);
     }
+}
+
+
 
     /**
      * Delete the authenticated employer's account.
@@ -197,8 +202,8 @@ class EmployerController extends Controller
                 return response()->json(['error' => 'Employer profile not found'], 404);
             }
 
-             // Check if a resume file exists for the employee
-             if (isset($employeeData['company_logo'])) {
+            // Check if a resume file exists for the employee
+            if (isset($employeeData['company_logo'])) {
                 $resumeUrl = $employerData['company_logo'];
 
                 // Extract the path from the URL
@@ -224,6 +229,49 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Authentication account not found'], 404);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Could not delete employer profile: ' . $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Update the authenticated employer's password.
+     */
+    public function updatePassword(Request $request)
+    {
+        try {
+            // Verify the user and retrieve their UID
+            $uid = $this->getAuthenticatedUserUid($request);
+
+            // Ensure the UID belongs to an employer
+            $this->ensureEmployer($uid);
+
+            // Validate the input
+            $validatedData = $request->validate([
+                'current_password' => 'required|string',
+                'new_password' => 'required|string|min:6|different:current_password',
+                'confirm_password' => 'required|string|min:6|same:new_password',
+            ]);
+
+            // Retrieve the user's email from Firebase Authentication
+            $user = $this->auth->getUser($uid);
+            $email = $user->email;
+
+            // Reauthenticate the user with the current password
+            try {
+                $this->auth->signInWithEmailAndPassword($email, $validatedData['current_password']);
+            } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+                return response()->json(['error' => 'Current password is incorrect'], 401);
+            }
+
+            // Update the password in Firebase Authentication
+            $this->auth->changeUserPassword($uid, $validatedData['new_password']);
+
+            return response()->json(['message' => 'Password updated successfully'], 200);
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
+            return response()->json(['error' => 'Invalid authentication token'], 401);
+        } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
+            return response()->json(['error' => 'Authentication account not found'], 404);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not update password: ' . $e->getMessage()], 400);
         }
     }
 }
