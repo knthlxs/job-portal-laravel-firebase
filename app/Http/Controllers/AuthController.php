@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\FirebaseService;
+use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
@@ -16,50 +16,8 @@ class AuthController extends Controller
     public function __construct()
     {
         $this->auth = FirebaseAuthService::connect();
-        $this->database = FirebaseService::connect();
+        $this->database = FirebaseRealtimeDatabaseService::connect();
         $this->storage = FirebaseStorageService::connect();
-    }
-    public function downloadFile($fileName)
-    {
-        try {
-            // Get the download URL
-            $downloadUrl = $this->getDownloadUrl($fileName);
-
-            // Return the download URL as a response
-            return response()->json([
-                'download_url' => $downloadUrl
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Could not retrieve download URL: ' . $e->getMessage()
-            ], 400);
-        }
-    }
-
-    public function uploadFile($filePath, $fileName)
-    {
-        $bucket = $this->storage->getBucket();
-        $bucket->upload(
-            fopen($filePath, 'r'),  // File to upload
-            [
-                'name' => $fileName  // Destination file name in Firebase Storage
-            ]
-        );
-    }
-
-
-    public function getDownloadUrl($fileName)
-    {
-        $bucket = $this->storage->getBucket();
-        $object = $bucket->object($fileName);
-        return $object->signedUrl(now()->addMinutes(5));  // Temporary download URL valid for 5 minutes
-    }
-
-
-    public function deleteFile($fileName)
-    {
-        $bucket = $this->storage->getBucket();
-        $bucket->object($fileName)->delete();
     }
 
     // Register a new user with email and password
@@ -84,13 +42,19 @@ class AuthController extends Controller
             if ($validatedData['user_type'] == 'employee') {
                 $file = $request->file('resume');
                 $filePath = $file->getPathname();
-                $fileName = 'resumes/' . time() . '_' . $file->getClientOriginalName(); // Generate a unique name for the file
+                // $fileName = 'resumes/' . time() . '_' . $file->getClientOriginalName();
+                $fileName = 'resumes/' . $user->uid . '/' . time() . '_' . $file->getClientOriginalName();
 
-                // Upload the resume to Firebase Storage
-                $this->uploadFile($filePath, $fileName);
+                // Upload the resume to Firebase Storage with proper file name
+                $bucket = $this->storage->getBucket();
+                $bucket->upload(
+                    fopen($filePath, 'r'),
+                    ['name' => $fileName]
+                );
 
                 // Get the download URL of the uploaded resume
-                $resumeUrl = $this->getDownloadUrl($fileName);
+                $object = $bucket->object($fileName);
+                $resumeUrl = $object->signedUrl(new \DateTime('+ 10 years')); // Long-lived URL
             } else {
                 $resumeUrl = null; // Employers don't have resumes
             }
@@ -138,34 +102,31 @@ class AuthController extends Controller
 
 
     // Log in a user with email and password
-    // Log in a user with email and password
-    // Example of using the Firebase UID to fetch user data
     public function signIn(Request $request)
-{
-    // Validate the request input
-    $validatedData = $request->validate([
-        'email' => 'required|email',
-        'password' => 'required',
-    ]);
+    {
+        // Validate the request input
+        $validatedData = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
 
-    try {
-        // Sign in the user with email and password using Firebase Authentication
-        $signInResult = $this->auth->signInWithEmailAndPassword(
-            $validatedData['email'],
-            $validatedData['password']
-        );
+        try {
+            // Sign in the user with email and password using Firebase Authentication
+            $signInResult = $this->auth->signInWithEmailAndPassword(
+                $validatedData['email'],
+                $validatedData['password']
+            );
 
-        return response()->json([
-            'message' => 'User signed in successfully',
-            'uid' =>  $signInResult->firebaseUserId(),
-            'id_token' => $signInResult->idToken(),
-        ], 200);
-
-    } catch (\Kreait\Firebase\Exception\AuthException $e) {
-        // Handle Firebase authentication errors
-        return response()->json(['error' => 'Authentication failed: ' . $e->getMessage()], 400);
+            return response()->json([
+                'message' => 'User signed in successfully',
+                'uid' =>  $signInResult->firebaseUserId(),
+                'id_token' => $signInResult->idToken(),
+            ], 200);
+        } catch (\Kreait\Firebase\Exception\AuthException $e) {
+            // Handle Firebase authentication errors
+            return response()->json(['error' => 'Authentication failed: ' . $e->getMessage()], 400);
+        }
     }
-}
 
 
 
@@ -180,7 +141,7 @@ class AuthController extends Controller
             $verifiedIdToken = $this->auth->verifyIdToken($idToken);
             return response()->json([
                 'message' => 'Token is valid',
-                'user_id' => $verifiedIdToken->getClaim('sub') // The Firebase user ID
+                'user_id' => $verifiedIdToken->claims()->get('sub') // The Firebase user ID
             ], 200);
         } catch (\Kreait\Firebase\Exception\AuthException $e) {
             return response()->json(['error' => 'Invalid token: ' . $e->getMessage()], 400);

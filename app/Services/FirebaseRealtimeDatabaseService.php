@@ -4,7 +4,7 @@ namespace App\Services;
 
 use Kreait\Firebase\Factory;
 
-class FirebaseService
+class FirebaseRealtimeDatabaseService
 {
     // This method connects to Firebase services
     public static function connect()

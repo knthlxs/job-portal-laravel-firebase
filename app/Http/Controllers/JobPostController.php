@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use Kreait\Firebase\Auth as FirebaseAuth;
-use Kreait\Firebase\Exception\AuthException;
-use App\Services\FirebaseService;
+use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use Illuminate\Http\Request;
 
@@ -16,46 +14,46 @@ class JobPostController extends Controller
     public function __construct(FirebaseAuthService $firebaseAuthService)
     {
         $this->auth = $firebaseAuthService->connect(); // Get the Firebase authentication service
-        $this->database = FirebaseService::connect(); // Get the Firebase database service
+        $this->database = FirebaseRealtimeDatabaseService::connect(); // Get the Firebase database service
     }
 
 
 
     // Show all job posts
     public function index()
-{
-    try {
-        // Fetch all employers
-        $employers = $this->database->getReference('/users/employers')->getValue();
+    {
+        try {
+            // Fetch all employers
+            $employers = $this->database->getReference('/users/employers')->getValue();
 
-        if (!$employers) {
-            return response()->json(['error' => 'No employers found'], 404);
-        }
+            if (!$employers) {
+                return response()->json(['error' => 'No employers found'], 404);
+            }
 
-        $allJobPosts = [];
+            $allJobPosts = [];
 
-        // Iterate through each employer's jobs
-        foreach ($employers as $employerId => $employerData) {
-            if (isset($employerData['jobs'])) {
-                foreach ($employerData['jobs'] as $jobId => $jobData) {
-                    $allJobPosts[] = [
-                        'employer_id' => $employerId,
-                        'job_id' => $jobId,
-                        'job_data' => $jobData,
-                    ];
+            // Iterate through each employer's jobs
+            foreach ($employers as $employerId => $employerData) {
+                if (isset($employerData['jobs'])) {
+                    foreach ($employerData['jobs'] as $jobId => $jobData) {
+                        $allJobPosts[] = [
+                            'employer_id' => $employerId,
+                            'job_id' => $jobId,
+                            'job_data' => $jobData,
+                        ];
+                    }
                 }
             }
-        }
 
-        if (empty($allJobPosts)) {
-            return response()->json(['message' => 'No job posts found'], 404);
-        }
+            if (empty($allJobPosts)) {
+                return response()->json(['message' => 'No job posts found'], 404);
+            }
 
-        return response()->json($allJobPosts, 200);
-    } catch (\Exception $e) {
-        return response()->json(['error' => 'Could not fetch job posts: ' . $e->getMessage()], 400);
+            return response()->json($allJobPosts, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not fetch job posts: ' . $e->getMessage()], 400);
+        }
     }
-}
 
     // Create a new job post (only accessible to employers)
     public function create(Request $request)
@@ -119,7 +117,7 @@ class JobPostController extends Controller
             ]);
 
             return response()->json(['message' => 'Job post created successfully', 'job_post_id' => $newJobPost->getKey()], 201);
-        } catch (\Kreait\Firebase\Exception\Auth\InvalidToken $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
@@ -154,7 +152,7 @@ class JobPostController extends Controller
             }
 
             // Fetch the job post
-            $jobPost = $this->database->getReference('users/employers/' .$uid . '/jobs/' . $jobPostId)->getValue();
+            $jobPost = $this->database->getReference('users/employers/' . $uid . '/jobs/' . $jobPostId)->getValue();
             if (!$jobPost) {
                 return response()->json(['error' => 'Job post not found'], 404);
             }
@@ -182,10 +180,10 @@ class JobPostController extends Controller
             }
 
             // Update the job post in Firebase
-            $this->database->getReference('users/employers/' .$uid . '/jobs/' . $jobPostId)->update($updatedJobPostData);
+            $this->database->getReference('users/employers/' . $uid . '/jobs/' . $jobPostId)->update($updatedJobPostData);
 
             return response()->json(['message' => 'Job post updated successfully'], 200);
-        } catch (\Kreait\Firebase\Exception\Auth\InvalidToken $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
@@ -217,7 +215,7 @@ class JobPostController extends Controller
             }
 
             // Fetch the job post
-            $jobPost = $this->database->getReference('users/employers/' .$uid . '/jobs/' . $jobPostId)->getValue();
+            $jobPost = $this->database->getReference('users/employers/' . $uid . '/jobs/' . $jobPostId)->getValue();
             if (!$jobPost) {
                 return response()->json(['error' => 'Job post not found'], 404);
             }
@@ -228,10 +226,10 @@ class JobPostController extends Controller
             }
 
             // Delete the job post from Firebase
-            $this->database->getReference('users/employers/' .$uid . '/jobs/' . $jobPostId)->remove();
+            $this->database->getReference('users/employers/' . $uid . '/jobs/' . $jobPostId)->remove();
 
             return response()->json(['message' => 'Job post deleted successfully'], 200);
-        } catch (\Kreait\Firebase\Exception\Auth\InvalidToken $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);

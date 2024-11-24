@@ -84,11 +84,10 @@ location (e.g., storage/app/firebase/).
 ```
 
 * Update the .env file with your app details and Firebase configurations:
-env
 ```bash
 FIREBASE_CREDENTIALS=/storage/app/firebase/filemname.json
 FIREBASE_DATABASE_URL=https://linktoyourrealtimedatabase.firebasedatabase.app/
-FIREBASE_STORAGE_BUCKET=your-roject-id.firebasestorage.app
+FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
 ```
 ### 5. Generate the Application Key
 

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\FirebaseService;
+use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -15,7 +15,7 @@ class JobApplicationController extends Controller
     public function __construct(FirebaseAuthService $firebaseAuthService)
     {
         $this->auth = $firebaseAuthService->connect(); // Get the Firebase authentication service
-        $this->database = FirebaseService::connect(); // Get the Firebase database service
+        $this->database = FirebaseRealtimeDatabaseService::connect(); // Get the Firebase database service
     }
 
     /**
@@ -24,15 +24,12 @@ class JobApplicationController extends Controller
     public function myApplications(Request $request)
     {
         try {
-            // Verify the user and retrieve their UID
-            $uid = $this->getAuthenticatedUserUid($request);
+            $uid = $this->getAuthenticatedUserUid($request); // Verify the user and retrieve their UID
 
-            // Ensure the UID belongs to an employee
-            $this->ensureEmployee($uid);
+            $this->ensureEmployee($uid); // Ensure the UID belongs to an employee
 
-            // Retrieve all applications under this employee
             $applications = $this->database->getReference("/users/employees/{$uid}/job_applications")
-                ->getValue();
+                ->getValue(); // Retrieve all applications under this employee
 
             if (!$applications) {
                 return response()->json(['message' => 'No job applications found'], 404);
@@ -53,11 +50,11 @@ class JobApplicationController extends Controller
         if (!$authHeader) {
             throw new \Exception('Authorization token missing');
         }
-
         $idToken = str_replace('Bearer ', '', $authHeader);
         $verifiedIdToken = $this->auth->verifyIdToken($idToken);
         return $verifiedIdToken->claims()->get('sub');
     }
+    
     /**
      * Check if the user is an employee.
      */
@@ -68,6 +65,7 @@ class JobApplicationController extends Controller
             throw new \Exception('User is not an employee or does not exist');
         }
     }
+
     /**
      * Create a new job application for the authenticated employee under the employer's job posting. Only employee can apply for a job.
      */

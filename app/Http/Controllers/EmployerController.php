@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\FirebaseService;
+use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
@@ -18,7 +18,7 @@ class EmployerController extends Controller
     public function __construct(FirebaseAuthService $firebaseAuthService)
     {
         $this->auth = $firebaseAuthService->connect(); // Get the Firebase authentication service
-        $this->database = FirebaseService::connect(); // Get the Firebase database service
+        $this->database = FirebaseRealtimeDatabaseService::connect(); // Get the Firebase database service
         $this->storage = FirebaseStorageService::connect();
     }
 
@@ -68,7 +68,7 @@ class EmployerController extends Controller
             }
 
             return response()->json($employer, 200);
-        } catch (\Kreait\Firebase\Exception\Auth\InvalidToken $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
@@ -85,17 +85,17 @@ class EmployerController extends Controller
         try {
             // Verify the user and retrieve their UID
             $uid = $this->getAuthenticatedUserUid($request);
-    
+
             // Ensure the UID belongs to an employer
             $this->ensureEmployer($uid);
-    
+
             // Fetch the current data of the employer from Firebase
             $currentData = $this->database->getReference("/users/employers/{$uid}")->getValue();
-    
+
             if (!$currentData) {
                 return response()->json(['error' => 'Employer not found'], 404);
             }
-    
+
             // Validate input data
             $validatedData = $request->validate([
                 'company_name' => 'sometimes|string|max:255',
@@ -124,9 +124,9 @@ class EmployerController extends Controller
 
             // Update the employer's profile in Firebase
             $this->database->getReference("/users/employers/{$uid}")->update($updatedData);
-    
+
             return response()->json(['message' => 'Employer updated successfully'], 200);
-        } catch (\Kreait\Firebase\Exception\Auth\InvalidToken $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
@@ -166,7 +166,7 @@ class EmployerController extends Controller
             $this->auth->deleteUser($uid);
 
             return response()->json(['message' => 'Employer profile and account deleted successfully'], 200);
-        } catch (\Kreait\Firebase\Exception\Auth\InvalidToken $e) {
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return response()->json(['error' => 'Authentication account not found'], 404);
