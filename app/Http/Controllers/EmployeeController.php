@@ -164,54 +164,6 @@ class EmployeeController extends Controller
         }
     }
 
-
-
-    public function downloadFile($fileName)
-    {
-        try {
-            // Get the download URL
-            $downloadUrl = $this->getDownloadUrl($fileName);
-
-            // Return the download URL as a response
-            return response()->json([
-                'download_url' => $downloadUrl
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Could not retrieve download URL: ' . $e->getMessage()
-            ], 400);
-        }
-    }
-
-    public function uploadFile($filePath, $fileName)
-    {
-        $bucket = $this->storage->getBucket();
-        $bucket->upload(
-            fopen($filePath, 'r'),  // File to upload
-            [
-                'name' => $fileName  // Destination file name in Firebase Storage
-            ]
-        );
-    }
-
-
-    public function getDownloadUrl($fileName)
-    {
-        $bucket = $this->storage->getBucket();
-        $object = $bucket->object($fileName);
-        return $object->signedUrl(now()->addMinutes(5));  // Temporary download URL valid for 5 minutes
-    }
-
-
-    public function deleteFile($fileName)
-    {
-        $bucket = $this->storage->getBucket();
-        $bucket->object($fileName)->delete();
-    }
-
-
-
-
     /**
      * Delete the authenticated employee's account.
      */

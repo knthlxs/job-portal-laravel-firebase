@@ -12,9 +12,9 @@ class JobApplicationController extends Controller
     protected $auth;
     private $database;
 
-    public function __construct(FirebaseAuthService $firebaseAuthService)
+    public function __construct()
     {
-        $this->auth = $firebaseAuthService->connect(); // Get the Firebase authentication service
+        $this->auth = FirebaseAuthService::connect(); // Get the Firebase authentication service
         $this->database = FirebaseRealtimeDatabaseService::connect(); // Get the Firebase database service
     }
 
@@ -80,9 +80,9 @@ class JobApplicationController extends Controller
 
             // Prepare the data to be stored
             $applicationData = [
-                'employee_uid' => $uid,
-                'employer_id' => $employerId,
-                'job_posting_id' => $jobPostingId,
+                'employee_uid' => $uid, // Id of employee who applied for the job               
+                'employer_id' => $employerId, // Id of employer who posted the job
+                'job_posting_id' => $jobPostingId, // Id of job posting that employee applied for
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -100,7 +100,7 @@ class JobApplicationController extends Controller
                 ->getReference("/users/employees/{$uid}/job_applications/{$applicationId}")
                 ->set($applicationData);
 
-            return response()->json(['message' => 'Job application created successfully'], 201);
+            return response()->json(['message' => 'Job application created successfully', 'application_id' => $applicationId, 'application_data' => $applicationData], 201);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Could not create job application: ' . $e->getMessage()], 400);
         }

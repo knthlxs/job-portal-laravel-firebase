@@ -126,9 +126,6 @@ class JobPostController extends Controller
         }
     }
 
-
-
-    // Update a job post (only accessible to employers)
     // Update a job post (only accessible to employers)
     public function update(Request $request, $jobPostId)
     {

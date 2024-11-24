@@ -90,9 +90,9 @@ class EmployerController extends Controller
             $this->ensureEmployer($uid);
 
             // Fetch the current data of the employer from Firebase
-            $currentData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
 
-            if (!$currentData) {
+            if (!$employerData) {
                 return response()->json(['error' => 'Employer not found'], 404);
             }
 
@@ -104,23 +104,61 @@ class EmployerController extends Controller
                 'company_location' => 'sometimes|string|max:255',
                 'company_industry' => 'sometimes|string|max:255',
                 'contact_person_name' => 'sometimes|string|max:255',
+                'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
             ]);
+
+            // Handle the new resume upload and deletion of old resume
+            if ($request->company_logo) {
+                // Delete the old resume if it exists
+                if (!empty($employerData['company_logo_url'])) {
+                    $company_logo_url = $employerData['company_logo_url'];
+
+                    // Extract the path and delete the file only if the path exists
+                    $path = parse_url($company_logo_url, PHP_URL_PATH);
+                    $fileName = basename($path);
+
+                    // Check if file exists in Firebase Storage
+                    $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
+                    if ($storageObject->exists()) {
+                        $storageObject->delete();
+                    }
+                }
+
+                // Process the new resume file
+                $file = $request->file('company_logo');
+                $filePath = $file->getPathname();
+                $fileName = 'company_logos/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+                try {
+                    $bucket = $this->storage->getBucket();
+                    $object = $bucket->upload(
+                        fopen($filePath, 'r'),
+                        ['name' => $fileName]
+                    );
+
+                    // Generate a long-lived signed URL for the new file
+                    $company_logo_url = $object->signedUrl(new \DateTime('+ 10 years'));
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Company logo upload failed: ' . $e->getMessage()], 500);
+                }
+            }
 
             // Prepare the data to be updated
             $updatedData = [
                 'user_type' => 'employer',
-                'company_name' => $request->input('company_name', $currentData['company_name']),
-                'company_email_address' => $request->input('company_email_address', $currentData['company_email_address']),
-                'company_phone_number' => $request->input('company_phone_number', $currentData['company_phone_number']),
-                'company_location' => $request->input('company_location', $currentData['company_location']),
-                'company_industry' => $request->input('company_industry', $currentData['company_industry']),
-                'contact_person_name' => $request->input('contact_person_name', $currentData['contact_person_name']),
+                'company_name' => $request->input('company_name', $employerData['company_name']),
+                'company_email_address' => $request->input('company_email_address', $employerData['company_email_address']),
+                'company_phone_number' => $request->input('company_phone_number', $employerData['company_phone_number']),
+                'company_location' => $request->input('company_location', $employerData['company_location']),
+                'company_industry' => $request->input('company_industry', $employerData['company_industry']),
+                'contact_person_name' => $request->input('contact_person_name', $employerData['contact_person_name']),
+                'company_logo_url' => $company_logo_url ?? $employerData['company_logo_url'],
             ];
 
-            // If no valid data to update, return an error
-            if (empty($updatedData)) {
-                return response()->json(['error' => 'No valid data to update'], 400);
-            }
+            // // If no valid data to update, return an error
+            // if (empty($updatedData)) {
+            //     return response()->json(['error' => 'No valid data to update'], 400);
+            // }
 
             // Update the employer's profile in Firebase
             $this->database->getReference("/users/employers/{$uid}")->update($updatedData);
@@ -157,6 +195,20 @@ class EmployerController extends Controller
             $employerData = $this->database->getReference('/users/employers/' . $uid)->getValue();
             if (!$employerData) {
                 return response()->json(['error' => 'Employer profile not found'], 404);
+            }
+
+             // Check if a resume file exists for the employee
+             if (isset($employeeData['company_logo'])) {
+                $resumeUrl = $employerData['company_logo'];
+
+                // Extract the path from the URL
+                $path = parse_url($resumeUrl, PHP_URL_PATH);
+
+                // Extract the filename from the path
+                $fileName = basename($path);
+
+                // Delete the resume file from Firebase Storage
+                $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName)->delete();
             }
 
             // Delete the employer's data from the database

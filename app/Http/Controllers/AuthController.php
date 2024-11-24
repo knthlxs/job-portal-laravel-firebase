@@ -20,84 +20,98 @@ class AuthController extends Controller
         $this->storage = FirebaseStorageService::connect();
     }
 
-    // Register a new user with email and password
     public function signUp(Request $request)
-    {
-        // Conditionally validate the resume field based on the user type
-        $validatedData = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|min:6',
-            'user_type' => 'required|in:employee,employer', // Ensure user_type is either 'employee' or 'employer'
-            'resume' => $request->input('user_type') == 'employee' ? 'required|file|mimes:png,jpeg,jpg|max:10240' : 'nullable', // Resume is required only for employees
-        ]);
+{
+    // Conditionally validate fields based on the user type
+    $validatedData = $request->validate([
+        'email' => 'required|email',
+        'password' => 'required|min:6',
+        'user_type' => 'required|in:employee,employer', // Ensure user_type is either 'employee' or 'employer'
+        'resume' => $request->input('user_type') == 'employee' ? 'required|file|mimes:png,jpeg,jpg|max:10240' : 'nullable', // Resume is required only for employees
+        'company_logo' => $request->input('user_type') == 'employer' ? 'required|file|mimes:png,jpeg,jpg|max:10240' : 'nullable', // Company logo is required only for employers
+    ]);
 
-        try {
-            // Create the new user
-            $user = $this->auth->createUserWithEmailAndPassword(
-                $validatedData['email'],
-                $validatedData['password']
+    try {
+        // Create the new user
+        $user = $this->auth->createUserWithEmailAndPassword(
+            $validatedData['email'],
+            $validatedData['password']
+        );
+
+        $resumeUrl = null;
+        $companyLogoUrl = null;
+
+        // Handle file upload to Firebase Storage based on user type
+        if ($validatedData['user_type'] == 'employee') {
+            // Upload employee resume
+            $file = $request->file('resume');
+            $filePath = $file->getPathname();
+            $fileName = 'resumes/' . $user->uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+            $bucket = $this->storage->getBucket();
+            $bucket->upload(
+                fopen($filePath, 'r'),
+                ['name' => $fileName]
             );
 
-            // Handle resume file upload to Firebase Storage if the user is an employee
-            if ($validatedData['user_type'] == 'employee') {
-                $file = $request->file('resume');
-                $filePath = $file->getPathname();
-                // $fileName = 'resumes/' . time() . '_' . $file->getClientOriginalName();
-                $fileName = 'resumes/' . $user->uid . '/' . time() . '_' . $file->getClientOriginalName();
+            $object = $bucket->object($fileName);
+            $resumeUrl = $object->signedUrl(new \DateTime('+10 years')); // Long-lived URL
+        } elseif ($validatedData['user_type'] == 'employer') {
+            // Upload employer company logo
+            $file = $request->file('company_logo');
+            $filePath = $file->getPathname();
+            $fileName = 'company_logos/' . $user->uid . '/' . time() . '_' . $file->getClientOriginalName();
 
-                // Upload the resume to Firebase Storage with proper file name
-                $bucket = $this->storage->getBucket();
-                $bucket->upload(
-                    fopen($filePath, 'r'),
-                    ['name' => $fileName]
-                );
+            $bucket = $this->storage->getBucket();
+            $bucket->upload(
+                fopen($filePath, 'r'),
+                ['name' => $fileName]
+            );
 
-                // Get the download URL of the uploaded resume
-                $object = $bucket->object($fileName);
-                $resumeUrl = $object->signedUrl(new \DateTime('+ 10 years')); // Long-lived URL
-            } else {
-                $resumeUrl = null; // Employers don't have resumes
-            }
-
-            // Determine the correct path based on user type
-            $userDataPath = '/users/' . $validatedData['user_type'] . 's';  // For example: '/users/employees' or '/users/employers'
-
-            // Use the Firebase UID as the unique key for storing user data
-            $userData = $this->database->getReference($userDataPath)->getChild($user->uid);
-
-            // Set the user data based on user type
-            if ($validatedData['user_type'] == 'employee') {
-                $userData->set([
-                    'user_type' => 'employee',
-                    'full_name' => $request['full_name'],
-                    'email_address' => $request['email'],
-                    'birthday' => $request['birthday'],
-                    'phone_number' => $request['phone_number'],
-                    'location' => $request['location'],
-                    'skills' => $request['skills'],
-                    'resume_url' => $resumeUrl,  // Store the resume URL in the database
-                ]);
-            } else {
-                $userData->set([
-                    'user_type' => 'employer',
-                    'company_name' => $request['company_name'],
-                    'company_email_address' => $request['company_email_address'],
-                    'company_phone_number' => $request['company_phone_number'],
-                    'company_location' => $request['company_location'],
-                    'company_industry' => $request['company_industry'],
-                    'contact_person_name' => $request['contact_person_name'],
-                ]);
-            }
-
-            // Return success response with user info
-            return response()->json([
-                'message' => 'User created successfully',
-                'user' => $user
-            ], 201);
-        } catch (\Kreait\Firebase\Exception\AuthException $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+            $object = $bucket->object($fileName);
+            $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years')); // Long-lived URL
         }
+
+        // Determine the correct path based on user type
+        $userDataPath = '/users/' . $validatedData['user_type'] . 's'; // '/users/employees' or '/users/employers'
+
+        // Use the Firebase UID as the unique key for storing user data
+        $userData = $this->database->getReference($userDataPath)->getChild($user->uid);
+
+        // Set the user data based on user type
+        if ($validatedData['user_type'] == 'employee') {
+            $userData->set([
+                'user_type' => 'employee',
+                'full_name' => $request['full_name'],
+                'email_address' => $request['email'],
+                'birthday' => $request['birthday'],
+                'phone_number' => $request['phone_number'],
+                'location' => $request['location'],
+                'skills' => $request['skills'],
+                'resume_url' => $resumeUrl, // Store the resume URL
+            ]);
+        } else {
+            $userData->set([
+                'user_type' => 'employer',
+                'company_name' => $request['company_name'],
+                'company_email_address' => $request['company_email_address'],
+                'company_phone_number' => $request['company_phone_number'],
+                'company_location' => $request['company_location'],
+                'company_industry' => $request['company_industry'],
+                'contact_person_name' => $request['contact_person_name'],
+                'company_logo_url' => $companyLogoUrl, // Store the company logo URL
+            ]);
+        }
+
+        // Return success response with user info
+        return response()->json([
+            'message' => 'User created successfully',
+            'user' => $user
+        ], 201);
+    } catch (\Kreait\Firebase\Exception\AuthException $e) {
+        return response()->json(['error' => $e->getMessage()], 400);
     }
+}
 
 
 

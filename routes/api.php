@@ -18,8 +18,6 @@ Route::post('/login', [AuthController::class, 'signIn']);
 Route::post('/register', [AuthController::class, 'signUp']);
 Route::post('/verify', [AuthController::class, 'verifyIdToken']);
 
-Route::get('/download/{fileName}', [AuthController::class, 'downloadFile']);
-
 
 // Job Posts Endpoints (All routes will start at /jobs/)
 Route::prefix('/jobs')->group(function () {
@@ -40,7 +38,7 @@ Route::prefix('employees')->group(function () {
 // Employee Profile Endpoints (All routes will start at /employers/)
 Route::prefix('employers')->group(function () {
     Route::get('/', [EmployerController::class, 'show']); // Get Authenticated Employer's Profile (only for employers)
-    Route::put('/', [EmployerController::class, 'update']); // Update Authenticated Employer's Profile (only for employers)
+    Route::post('/', [EmployerController::class, 'update']); // Update Authenticated Employer's Profile (only for employers)
     Route::delete('/', [EmployerController::class, 'destroy']); // Delete Authenticated Employer's Profile (only for employers)
 });
 
@@ -48,10 +46,7 @@ Route::prefix('employers')->group(function () {
 Route::prefix('/employers/{employerId}/jobs/{jobPostingId}/applications')->group(function () {
     Route::post('/', [JobApplicationController::class, 'store']); // Create a job application for a specific job posting (only for employees) - This route will let employee apply for the job posting from employer
     Route::get('/', [JobApplicationController::class, 'index']); // Get all job applications for a specific job posting (only for employers) - This route will let employers who own job posting see who apply for their job posting
-    
+
     // Route::put('/{applicationId}', [JobApplicationController::class, 'update']); // Update a specific job application (only for employers)
     // Route::delete('/{applicationId}', [JobApplicationController::class, 'destroy']); // Delete a specific job application (only for employers)
 });
-
-
-
