@@ -5,7 +5,6 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployerController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobPostController;
-use App\Http\Controllers\TestController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -13,11 +12,11 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-
+// Auth Endpoints
 Route::post('/login', [AuthController::class, 'signIn']);
 Route::post('/register', [AuthController::class, 'signUp']);
+Route::post('/logout', [AuthController::class, 'logout']);
 Route::post('/verify', [AuthController::class, 'verifyIdToken']);
-
 
 // Job Posts Endpoints (All routes will start at /jobs/)
 Route::prefix('/jobs')->group(function () {
