@@ -17,8 +17,6 @@ class JobPostController extends Controller
         $this->database = FirebaseRealtimeDatabaseService::connect(); // Get the Firebase database service
     }
 
-
-
     // Show all job posts
     public function index()
     {
@@ -36,17 +34,13 @@ class JobPostController extends Controller
             foreach ($employers as $employerId => $employerData) {
                 if (isset($employerData['jobs'])) {
                     foreach ($employerData['jobs'] as $jobId => $jobData) {
-                        $allJobPosts[] = [
-                            'employer_id' => $employerId,
-                            'job_id' => $jobId,
-                            'job_data' => $jobData,
-                        ];
+                        $allJobPosts[] = $jobData;
                     }
                 }
             }
 
             if (empty($allJobPosts)) {
-                return response()->json(['message' => 'No job posts found'], 404);
+                return response()->json([], 200);
             }
 
             return response()->json($allJobPosts, 200);
@@ -104,19 +98,26 @@ class JobPostController extends Controller
                 'skills_required' => 'required|string',
             ]);
 
+            
+            // Get reference for the new job
+            $newJobRef = $this->database->getReference('/users/employers/' . $uid . '/jobs')->push();
+            
+            // Get the auto-generated key
+            $jobId = $newJobRef->getKey();
 
-            // Save the job post to the database
-            $newJobPost = $this->database->getReference('/users/employers/' . $uid . '/jobs')->push([
+            // Save the job post to the database with the auto-generated ID
+            $newJobRef->set([
+                'job_id' => $jobId,  // Now using the auto-generated key
                 'job_title' => $validatedData['job_title'],
                 'job_description' => $validatedData['job_description'],
                 'salary' => $validatedData['salary'],
                 'location' => $validatedData['location'],
                 'skills_required' => $validatedData['skills_required'],
-                'employer_id' => $uid,
+                'employer_uid' => $uid,
                 'created_at' => now(),
             ]);
 
-            return response()->json(['message' => 'Job post created successfully', 'job_post_id' => $newJobPost->getKey()], 201);
+            return response()->json(['message' => 'Job post created successfully', 'job' => $newJobRef->getValue()], 201);
         } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {

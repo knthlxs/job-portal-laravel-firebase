@@ -49,6 +49,89 @@ class EmployerController extends Controller
     }
 
     /**
+     * Get a list of all employers.
+     */
+    public function listEmployers(Request $request)
+    {
+        try {
+            // Verify the user and retrieve their UID
+            // $uid = $this->getAuthenticatedUserUid($request);
+
+            // Ensure the user is an employee
+            // $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
+            // if (!$employeeData) {
+            //     return response()->json(['error' => 'Only employees can view employer listings'], 403);
+            // }
+
+            // Get all employers from the database
+            $employers = $this->database->getReference('/users/employers')->getValue();
+
+            // If no employers found, return empty array
+            if (!$employers) {
+                return response()->json(['data' => []], 200);
+            }
+
+            // Transform the data to remove sensitive information
+            $transformedEmployers = [];
+            foreach ($employers as $employerId => $employer) {
+                $transformedEmployers[] = [
+                    'employer_uid' => $employerId,
+                    'name' => $employer['name'] ?? null,
+                    'industry' => $employer['industry'] ?? null,
+                    'location' => $employer['location'] ?? null,
+                    'company_logo' => $employer['company_logo'] ?? null,
+                    // Add any other fields that should be visible in the listing
+                ];
+            }
+
+            return response()->json(['employers' => $transformedEmployers], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not fetch employers: ' . $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * View a specific employer's public profile.
+     */
+    public function getEmployerProfile(Request $request, string $employerId)
+    {
+        try {
+            // Verify the user and retrieve their UID
+            // $uid = $this->getAuthenticatedUserUid($request);
+
+            // Ensure the user is an employee
+            // $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
+            // if (!$employeeData) {
+            //     return response()->json(['error' => 'Only employees can view employer profiles'], 403);
+            // }
+
+            // Get the specific employer's data
+            $employer = $this->database->getReference("/users/employers/{$employerId}")->getValue();
+
+            // if (!$employer) {
+            //     return response()->json(['error' => 'Employer not found'], 404);
+            // }
+
+            // Transform the data to include only public information
+            $transformedEmployer = [
+                'employer_uid' => $employerId,
+                'name' => $employer['name'] ?? null,
+                'industry' => $employer['industry'] ?? null,
+                'location' => $employer['location'] ?? null,
+                'company_logo' => $employer['company_logo'] ?? null,
+                'contact_person_name' => $employer['contact_person_name'] ?? null,
+
+                // Get active job postings for this employer
+                // 'job_postings' => isset($employer['jobs']) ? array_values($employer['jobs']) : [],
+            ];
+
+            return response()->json( $transformedEmployer, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not fetch employer profile: ' . $e->getMessage()], 400);
+        }
+    }
+
+    /**
      * Get the authenticated employer's details.
      */
     public function show(Request $request)
@@ -81,100 +164,100 @@ class EmployerController extends Controller
      * Update the authenticated employer's details.
      */
     public function update(Request $request)
-{
-    try {
-        // Verify the user and retrieve their UID
-        $uid = $this->getAuthenticatedUserUid($request);
+    {
+        try {
+            // Verify the user and retrieve their UID
+            $uid = $this->getAuthenticatedUserUid($request);
 
-        // Ensure the UID belongs to an employer
-        $this->ensureEmployer($uid);
+            // Ensure the UID belongs to an employer
+            $this->ensureEmployer($uid);
 
-        // Fetch the current data of the employer from Firebase
-        $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            // Fetch the current data of the employer from Firebase
+            $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
 
-        if (!$employerData) {
-            return response()->json(['error' => 'Employer not found'], 404);
-        }
-
-        // Validate input data
-        $validatedData = $request->validate([
-            'company_name' => 'sometimes|string|max:255',
-            'company_email_address' => 'sometimes|email',
-            'company_phone_number' => 'sometimes|string|max:15',
-            'company_location' => 'sometimes|string|max:255',
-            'company_industry' => 'sometimes|string|max:255',
-            'contact_person_name' => 'sometimes|string|max:255',
-            'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
-        ]);
-
-        // Update email in Firebase Authentication if it has changed
-        if (isset($validatedData['company_email_address']) && $validatedData['company_email_address'] !== $employerData['company_email_address']) {
-            try {
-                $this->auth->updateUser($uid, ['email' => $validatedData['company_email_address']]);
-            } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
-                return response()->json(['error' => 'Could not update email in Firebase Auth: ' . $e->getMessage()], 400);
+            if (!$employerData) {
+                return response()->json(['error' => 'Employer not found'], 404);
             }
-        }
 
-        // Get the existing company logo URL if it exists
-        $companyLogoUrl = $employerData['company_logo_url'] ?? null;
+            // Validate input data
+            $validatedData = $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email',
+                'phone_number' => 'sometimes|string|max:15',
+                'location' => 'sometimes|string|max:255',
+                'industry' => 'sometimes|string|max:255',
+                'contact_person_name' => 'sometimes|string|max:255',
+                'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
+            ]);
 
-        // Handle the company logo upload and deletion of old logo
-        if ($request->hasFile('company_logo')) {
-            // Delete the old logo if it exists
-            if ($companyLogoUrl) {
-                $path = parse_url($companyLogoUrl, PHP_URL_PATH);
-                $fileName = basename($path);
-
-                $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
-                if ($storageObject->exists()) {
-                    $storageObject->delete();
+            // Update email in Firebase Authentication if it has changed
+            if (isset($validatedData['email']) && $validatedData['email'] !== $employerData['email']) {
+                try {
+                    $this->auth->updateUser($uid, ['email' => $validatedData['email']]);
+                } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+                    return response()->json(['error' => 'Could not update email in Firebase Auth: ' . $e->getMessage()], 400);
                 }
             }
 
-            // Process the new company logo
-            $file = $request->file('company_logo');
-            $filePath = $file->getPathname();
-            $fileName = 'company_logos/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+            // Get the existing company logo URL if it exists
+            $companyLogoUrl = $employerData['company_logo'] ?? null;
 
-            try {
-                $bucket = $this->storage->getBucket();
-                $object = $bucket->upload(
-                    fopen($filePath, 'r'),
-                    ['name' => $fileName]
-                );
+            // Handle the company logo upload and deletion of old logo
+            if ($request->hasFile('company_logo')) {
+                // Delete the old logo if it exists
+                if ($companyLogoUrl) {
+                    $path = parse_url($companyLogoUrl, PHP_URL_PATH);
+                    $fileName = basename($path);
 
-                // Generate a long-lived signed URL for the new logo
-                $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years'));
-            } catch (\Exception $e) {
-                return response()->json(['error' => 'Company logo upload failed: ' . $e->getMessage()], 500);
+                    $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
+                    if ($storageObject->exists()) {
+                        $storageObject->delete();
+                    }
+                }
+
+                // Process the new company logo
+                $file = $request->file('company_logo');
+                $filePath = $file->getPathname();
+                $fileName = 'company_logos/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+                try {
+                    $bucket = $this->storage->getBucket();
+                    $object = $bucket->upload(
+                        fopen($filePath, 'r'),
+                        ['name' => $fileName]
+                    );
+
+                    // Generate a long-lived signed URL for the new logo
+                    $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years'));
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Company logo upload failed: ' . $e->getMessage()], 500);
+                }
             }
+
+            // Prepare the data to be updated
+            $updatedData = [
+                'user_type' => 'employer',
+                'name' => $request->input('name', $employerData['name']),
+                'email' => $request->input('email', $employerData['email']),
+                'phone_number' => $request->input('phone_number', $employerData['phone_number']),
+                'location' => $request->input('location', $employerData['location']),
+                'industry' => $request->input('industry', $employerData['industry']),
+                'contact_person_name' => $request->input('contact_person_name', $employerData['contact_person_name']),
+                'company_logo' => $companyLogoUrl,  // Ensure the logo URL is updated if a new one is uploaded
+            ];
+
+            // Update the employer's profile in Firebase
+            $this->database->getReference("/users/employers/{$uid}")->update($updatedData);
+
+            return response()->json(['message' => 'Employer updated successfully', 'employer' => $updatedData, 'company_logo' => $companyLogoUrl], 200);
+        } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
+            return response()->json(['error' => 'Invalid authentication token'], 401);
+        } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+            return response()->json(['error' => 'Authentication error'], 401);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not update employer: ' . $e->getMessage()], 400);
         }
-
-        // Prepare the data to be updated
-        $updatedData = [
-            'user_type' => 'employer',
-            'company_name' => $request->input('company_name', $employerData['company_name']),
-            'company_email_address' => $request->input('company_email_address', $employerData['company_email_address']),
-            'company_phone_number' => $request->input('company_phone_number', $employerData['company_phone_number']),
-            'company_location' => $request->input('company_location', $employerData['company_location']),
-            'company_industry' => $request->input('company_industry', $employerData['company_industry']),
-            'contact_person_name' => $request->input('contact_person_name', $employerData['contact_person_name']),
-            'company_logo_url' => $companyLogoUrl,  // Ensure the logo URL is updated if a new one is uploaded
-        ];
-
-        // Update the employer's profile in Firebase
-        $this->database->getReference("/users/employers/{$uid}")->update($updatedData);
-
-        return response()->json(['message' => 'Employer updated successfully', 'employer' => $updatedData, 'company_logo_url' => $companyLogoUrl], 200);
-    } catch (\Kreait\Firebase\Exception\Auth\FailedToVerifyToken $e) {
-        return response()->json(['error' => 'Invalid authentication token'], 401);
-    } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
-        return response()->json(['error' => 'Authentication error'], 401);
-    } catch (\Exception $e) {
-        return response()->json(['error' => 'Could not update employer: ' . $e->getMessage()], 400);
     }
-}
 
 
 

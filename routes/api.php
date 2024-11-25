@@ -27,20 +27,28 @@ Route::prefix('/jobs')->group(function () {
 });
 
 // Employee Profile Endpoints (All routes will start at /employees/)
-Route::prefix('employees')->group(function () {
+Route::prefix('employee')->group(function () {
     Route::get('/', [EmployeeController::class, 'show']); // Get Authenticated Employee's Profile (only for employees)
     Route::post('/', [EmployeeController::class, 'update']); // Update Authenticated Employee's Profile (only for employees)
     Route::delete('/', [EmployeeController::class, 'destroy']); // Delete Authenticated Employee's Profile (only for employees)
     Route::get('/my-applications', [JobApplicationController::class, 'myApplications']); // Get all employee applications (only for employees)
     Route::post('/update-password', [EmployeeController::class, 'updatePassword']); // Update the authenticated employee's password (only for employees)
+
+    // New routes for viewing employees
+    Route::get('/all', [EmployeeController::class, 'listEmployees']); // Get list of all employees (for both employees and employers)
+    Route::get('/{employeeId}', [EmployeeController::class, 'getEmployeeProfile']); // Get specific employee profile (for both employees and employers)
 });
 
-// Employee Profile Endpoints (All routes will start at /employers/)
-Route::prefix('employers')->group(function () {
+// Employer Profile Endpoints (All routes will start at /employers/)
+Route::prefix('employer')->group(function () {
     Route::get('/', [EmployerController::class, 'show']); // Get Authenticated Employer's Profile (only for employers)
     Route::post('/', [EmployerController::class, 'update']); // Update Authenticated Employer's Profile (only for employers)
     Route::delete('/', [EmployerController::class, 'destroy']); // Delete Authenticated Employer's Profile (only for employers)
     Route::post('/update-password', [EmployerController::class, 'updatePassword']); // Update the authenticated employer's password (only for employers)
+
+       // New routes for viewing employers
+       Route::get('/all', [EmployerController::class, 'listEmployers']); // Get list of all employers (for both employees and employers)
+       Route::get('/{employerId}', [EmployerController::class, 'getEmployerProfile']); // Get specific employer profile (for both employees and employers) 
 });
 
 // Job Application Endpoints (All routes will start at /employers/{employerId}/jobs/{jobPostingId}/applications/)

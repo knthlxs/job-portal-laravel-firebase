@@ -74,32 +74,34 @@ class JobApplicationController extends Controller
         try {
             // Verify the user and retrieve their UID
             $uid = $this->getAuthenticatedUserUid($request);
-
+    
             // Ensure the UID belongs to an employee
             $this->ensureEmployee($uid);
-
+    
+            // Get reference and auto-generated ID for the application
+            $applicationRef = $this->database
+                ->getReference("/users/employers/{$employerId}/job_postings/{$jobPostingId}/applications")
+                ->push();
+            
+            $applicationId = $applicationRef->getKey();
+    
             // Prepare the data to be stored
             $applicationData = [
-                'employee_uid' => $uid, // Id of employee who applied for the job               
-                'employer_id' => $employerId, // Id of employer who posted the job
-                'job_posting_id' => $jobPostingId, // Id of job posting that employee applied for
+                'application_id' => $applicationId,
+                'employee_uid' => $uid,
+                'employer_uid' => $employerId,
+                'job_id' => $jobPostingId,
                 'created_at' => now(),
-                'updated_at' => now(),
             ];
-
-            // Generate a unique ID for the application
-            $applicationId = Str::uuid();
-
-            // Save the job application under the employer's job posting in Firebase
-            $this->database
-                ->getReference("/users/employers/{$employerId}/job_postings/{$jobPostingId}/applications/{$applicationId}")
-                ->set($applicationData);
-
-            // Save the job application in the global /job_applications reference
+    
+            // Save the data using the reference
+            $applicationRef->set($applicationData);
+    
+            // Save the job application in employee's reference
             $this->database
                 ->getReference("/users/employees/{$uid}/job_applications/{$applicationId}")
                 ->set($applicationData);
-
+    
             return response()->json(['message' => 'Job application created successfully', 'application_id' => $applicationId, 'application_data' => $applicationData], 201);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Could not create job application: ' . $e->getMessage()], 400);

@@ -48,6 +48,87 @@ class EmployeeController extends Controller
     }
 
     /**
+     * Get a list of all employees (accessible by employers only).
+     */
+    public function listEmployees(Request $request)
+    {
+        try {
+            // Verify the user and retrieve their UID
+            // $uid = $this->getAuthenticatedUserUid($request);
+
+            // Ensure the user is an employer
+            // $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            // if (!$employerData) {
+            //     return response()->json(['error' => 'Only employers can view all employee listings'], 403);
+            // }
+
+            // Get all employees from the database
+            $employees = $this->database->getReference('/users/employees')->getValue();
+
+            // If no employees found, return empty array
+            if (!$employees) {
+                return response()->json(['data' => []], 200);
+            }
+
+            // Transform the data to remove sensitive information
+            $transformedEmployees = [];
+            foreach ($employees as $employeeId => $employee) {
+                $transformedEmployees[] = [
+                    'employee_uid' => $employeeId,
+                    'email' => $employee['email'] ?? null,
+                    'name' => $employee['name'] ?? null,
+                    'location' => $employee['location'] ?? null,
+                    'skills' => $employee['skills'] ?? null,
+                    // 'resume' => $employee['resume'] ?? null,
+                ];
+            }
+
+            return response()->json($transformedEmployees, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not fetch employees: ' . $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Get a specific employee's profile (accessible by employers only).
+     */
+    public function getEmployeeProfile(Request $request, string $employeeId)
+    {
+        try {
+            // Verify the user and retrieve their UID
+            // $uid = $this->getAuthenticatedUserUid($request);
+
+            // Ensure the user is an employer
+            // $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            // if (!$employerData) {
+            //     return response()->json(['error' => 'Only employers can view employee profiles'], 403);
+            // }
+
+            // Get the specific employee's data
+            $employee = $this->database->getReference("/users/employees/{$employeeId}")->getValue();
+
+            if (!$employee) {
+                return response()->json(['error' => 'Employee not found']);
+            }
+
+            // Transform the data to remove sensitive information
+            $transformedEmployee = [
+                'employee_uid' => $employeeId,
+                'name' => $employee['name'] ?? null,
+                'email' => $employee['email'] ?? null,
+                'location' => $employee['location'] ?? null,
+                'skills' => $employee['skills'] ?? null,
+                // 'resume' => $employee['resume'] ?? null,
+                // Add any other fields that should be visible to employers
+            ];
+
+            return response()->json(['data' => $transformedEmployee], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not fetch employee profile: ' . $e->getMessage()], 400);
+        }
+    }
+
+    /**
      * Get the authenticated employee's details.
      */
     public function show(Request $request)
@@ -78,99 +159,95 @@ class EmployeeController extends Controller
      * Update the authenticated employee's details.
      */
     public function update(Request $request)
-{
-    try {
-        // Verify the user and retrieve their UID
-        $uid = $this->getAuthenticatedUserUid($request);
+    {
+        try {
+            // Verify the user and retrieve their UID
+            $uid = $this->getAuthenticatedUserUid($request);
 
-        // Ensure the UID belongs to an employee
-        $this->ensureEmployee($uid);
+            // Ensure the UID belongs to an employee
+            $this->ensureEmployee($uid);
 
-        // Fetch the current data of the employee from Firebase
-        $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
+            // Fetch the current data of the employee from Firebase
+            $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
 
-        if (!$employeeData) {
-            return response()->json(['error' => 'Employee not found'], 404);
-        }
-
-        // Validate input data
-        $validatedData = $request->validate([
-            'full_name' => 'sometimes|string|max:255',
-            'email_address' => 'sometimes|email',
-            'birthday' => 'sometimes|date',
-            'phone_number' => 'sometimes|string|max:15',
-            'location' => 'sometimes|string|max:255',
-            'skills' => 'sometimes|string',
-            'resume' => 'sometimes|file|mimes:png,jpeg,jpg,pdf|max:10240',
-        ]);
-
-        // Update email in Firebase Authentication if it has changed
-        if (isset($validatedData['email_address']) && $validatedData['email_address'] !== $employeeData['email_address']) {
-            try {
-                $this->auth->updateUser($uid, ['email' => $validatedData['email_address']]);
-            } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
-                return response()->json(['error' => 'Could not update email in Firebase Auth: ' . $e->getMessage()], 400);
+            if (!$employeeData) {
+                return response()->json(['error' => 'Employee not found'], 404);
             }
-        }
 
-        // Handle the resume file upload and old resume deletion
-        $resumeUrl = $employeeData['resume_url'] ?? null; // Use existing resume URL or default to null
+            // Validate input data
+            $validatedData = $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email',
+                'birthday' => 'sometimes|date',
+                'phone_number' => 'sometimes|string|max:15',
+                'location' => 'sometimes|string|max:255',
+                'skills' => 'sometimes|string',
+                'resume' => 'sometimes|file|mimes:png,jpeg,jpg,pdf|max:10240',
+            ]);
 
-        if ($request->hasFile('resume')) {
-            // Delete the old resume if it exists
-            if (!empty($resumeUrl)) {
-                $path = parse_url($resumeUrl, PHP_URL_PATH);
-                $fileName = basename($path);
-
-                $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
-                if ($storageObject->exists()) {
-                    $storageObject->delete();
+            // Update email in Firebase Authentication if it has changed
+            if (isset($validatedData['email']) && $validatedData['email'] !== $employeeData['email']) {
+                try {
+                    $this->auth->updateUser($uid, ['email' => $validatedData['email']]);
+                } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
+                    return response()->json(['error' => 'Could not update email in Firebase Auth: ' . $e->getMessage()], 400);
                 }
             }
 
-            // Process the new resume file
-            $file = $request->file('resume');
-            $filePath = $file->getPathname();
-            $fileName = 'resumes/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+            // Handle the resume file upload and old resume deletion
+            $resumeUrl = $employeeData['resume'] ?? null; // Use existing resume URL or default to null
 
-            try {
-                $bucket = $this->storage->getBucket();
-                $object = $bucket->upload(
-                    fopen($filePath, 'r'),
-                    ['name' => $fileName]
-                );
+            if ($request->hasFile('resume')) {
+                // Delete the old resume if it exists
+                if (!empty($resumeUrl)) {
+                    $path = parse_url($resumeUrl, PHP_URL_PATH);
+                    $fileName = basename($path);
 
-                // Generate a long-lived signed URL for the new file
-                $resumeUrl = $object->signedUrl(new \DateTime('+10 years'));
-            } catch (\Exception $e) {
-                return response()->json(['error' => 'Resume upload failed: ' . $e->getMessage()], 500);
+                    $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
+                    if ($storageObject->exists()) {
+                        $storageObject->delete();
+                    }
+                }
+
+                // Process the new resume file
+                $file = $request->file('resume');
+                $filePath = $file->getPathname();
+                $fileName = 'resumes/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+                try {
+                    $bucket = $this->storage->getBucket();
+                    $object = $bucket->upload(
+                        fopen($filePath, 'r'),
+                        ['name' => $fileName]
+                    );
+
+                    // Generate a long-lived signed URL for the new file
+                    $resumeUrl = $object->signedUrl(new \DateTime('+10 years'));
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Resume upload failed: ' . $e->getMessage()], 500);
+                }
             }
+
+            // Prepare the data to be updated
+            $updatedData = [
+                'user_type' => 'employee',
+                'name' => $request->input('name', $employeeData['name']),
+                'email' => $request->input('email', $employeeData['email']),
+                'birthday' => $request->input('birthday', $employeeData['birthday']),
+                'phone_number' => $request->input('phone_number', $employeeData['phone_number']),
+                'location' => $request->input('location', $employeeData['location']),
+                'skills' => $request->input('skills', $employeeData['skills']),
+                'resume' => $request->hasFile('resume') ? $resumeUrl : $employeeData['resume'], // Always use updated or existing resume URL
+            ];
+
+            // Update the employee's profile in Firebase
+            $this->database->getReference("/users/employees/{$uid}")->update($updatedData);
+
+            return response()->json($updatedData, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not update employee: ' . $e->getMessage()], 400);
         }
-
-        // Prepare the data to be updated
-        $updatedData = [
-            'user_type' => 'employee',
-            'full_name' => $request->input('full_name', $employeeData['full_name']),
-            'email_address' => $request->input('email_address', $employeeData['email_address']),
-            'birthday' => $request->input('birthday', $employeeData['birthday']),
-            'phone_number' => $request->input('phone_number', $employeeData['phone_number']),
-            'location' => $request->input('location', $employeeData['location']),
-            'skills' => $request->input('skills', $employeeData['skills']),
-            'resume_url' => $resumeUrl, // Always use updated or existing resume URL
-        ];
-
-        // Update the employee's profile in Firebase
-        $this->database->getReference("/users/employees/{$uid}")->update($updatedData);
-
-        return response()->json([
-            'message' => 'Employee updated successfully',
-            'resume_url' => $updatedData['resume_url'] ?? null,
-            'updated_data' => $updatedData
-        ], 200);
-    } catch (\Exception $e) {
-        return response()->json(['error' => 'Could not update employee: ' . $e->getMessage()], 400);
     }
-}
 
 
 
@@ -199,8 +276,8 @@ class EmployeeController extends Controller
             }
 
             // Check if a resume file exists for the employee
-            if (isset($employeeData['resume_url'])) {
-                $resumeUrl = $employeeData['resume_url'];
+            if (isset($employeeData['resume'])) {
+                $resumeUrl = $employeeData['resume'];
 
                 // Extract the path from the URL
                 $path = parse_url($resumeUrl, PHP_URL_PATH);

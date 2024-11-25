@@ -24,10 +24,13 @@ class AuthController extends Controller
     {
         $validatedData = $request->validate([
             'email' => 'required|email',
-            'password' => 'required|min:6',
+            'password' => 'required',
             'user_type' => 'required|in:employee,employer',
             'resume' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
             'company_logo' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
+            'name' => 'required|string',
+            'phone_number' => 'required|string',
+            'location' => 'required|string',
         ]);
 
         try {
@@ -75,26 +78,36 @@ class AuthController extends Controller
             $userData = $this->database->getReference($userDataPath)->getChild($user->uid);
 
             if ($validatedData['user_type'] == 'employee') {
+                $request->validate([
+                    'birthday' => 'required|string',
+                    'skills' => 'required|string',
+                ]);
                 $userData->set([
+                    'employee_uid' => $user->uid,
                     'user_type' => 'employee',
-                    'full_name' => $request['full_name'],
-                    'email_address' => $request['email'],
+                    'name' => $request['name'],
+                    'email' => $request['email'],
                     'birthday' => $request['birthday'],
                     'phone_number' => $request['phone_number'],
                     'location' => $request['location'],
                     'skills' => $request['skills'],
-                    'resume_url' => $resumeUrl,
+                    'resume' => $resumeUrl,
                 ]);
             } else {
+                $request->validate([
+                    'industry' => 'required|string',
+                    'contact_person_name' => 'required|string',
+                ]);
                 $userData->set([
+                    'employer_uid' => $user->uid,
                     'user_type' => 'employer',
-                    'company_name' => $request['company_name'],
-                    'company_email_address' => $request['email'],
-                    'company_phone_number' => $request['company_phone_number'],
-                    'company_location' => $request['company_location'],
-                    'company_industry' => $request['company_industry'],
+                    'name' => $request['name'],
+                    'email' => $request['email'],
+                    'phone_number' => $request['phone_number'],
+                    'location' => $request['location'],
+                    'industry' => $request['industry'],
                     'contact_person_name' => $request['contact_person_name'],
-                    'company_logo_url' => $companyLogoUrl,
+                    'company_logo' => $companyLogoUrl,
                 ]);
             }
 
