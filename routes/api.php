@@ -24,6 +24,7 @@ Route::prefix('/jobs')->group(function () {
     Route::post('/', [JobPostController::class, 'create']); // Create a job post (only for employers)
     Route::put('/{jobPostId}', [JobPostController::class, 'update']); // Update a job post (only for employers)
     Route::delete('/{jobPostId}', [JobPostController::class, 'delete']); // Delete a job post (only for employers)
+
 });
 
 // Employee Profile Endpoints (All routes will start at /employees/)
@@ -49,6 +50,9 @@ Route::prefix('employer')->group(function () {
        // New routes for viewing employers
        Route::get('/all', [EmployerController::class, 'listEmployers']); // Get list of all employers (for both employees and employers)
        Route::get('/{employerId}', [EmployerController::class, 'getEmployerProfile']); // Get specific employer profile (for both employees and employers) 
+
+    Route::get('/{employer_uid}/jobs/{job_id}', [JobPostController::class, 'showJobPostById']);
+
 });
 
 // Job Application Endpoints (All routes will start at /employers/{employerId}/jobs/{jobPostingId}/applications/)

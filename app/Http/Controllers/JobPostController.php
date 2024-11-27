@@ -235,4 +235,24 @@ class JobPostController extends Controller
             return response()->json(['error' => 'Could not delete job post: ' . $e->getMessage()], 400);
         }
     }
+
+    // Show job post by id
+    public function showJobPostById(Request $request, $employer_uid, $job_id) {
+         // Extract the Authorization token from the request header
+         $authHeader = $request->header('Authorization');
+         if (!$authHeader) {
+             return response()->json(['error' => 'Authorization token missing'], 401);
+         }
+
+         try {
+            $jobPost = $this->database->getReference('/users/employers/'.$employer_uid.'/jobs/'.$job_id)->getValue();
+
+            // $jobPostArray = array_values($jobPost);
+            return response()->json($jobPost, 200);
+
+         } catch (\Exception $e) {
+            return response()->json(['error' => 'Could not view job post: ' . $e->getMessage()], 400);
+
+         }
+    }
 }

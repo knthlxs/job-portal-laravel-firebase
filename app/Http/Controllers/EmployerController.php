@@ -91,7 +91,7 @@ class EmployerController extends Controller
     }
 
     /**
-     * View a specific employer's public profile.
+     * View a specific employer's public profile by uid.
      */
     public function getEmployerProfile(Request $request, string $employerId)
     {

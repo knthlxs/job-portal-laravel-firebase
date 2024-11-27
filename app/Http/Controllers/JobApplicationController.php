@@ -22,24 +22,30 @@ class JobApplicationController extends Controller
      * View all job applications submitted by the authenticated employee. Only employee can make this request.
      */
     public function myApplications(Request $request)
-    {
-        try {
-            $uid = $this->getAuthenticatedUserUid($request); // Verify the user and retrieve their UID
+{
+    try {
+        $uid = $this->getAuthenticatedUserUid($request); // Verify the user and retrieve their UID
 
-            $this->ensureEmployee($uid); // Ensure the UID belongs to an employee
+        $this->ensureEmployee($uid); // Ensure the UID belongs to an employee
 
-            $applications = $this->database->getReference("/users/employees/{$uid}/job_applications")
-                ->getValue(); // Retrieve all applications under this employee
+        $applications = $this->database->getReference("/users/employees/{$uid}/job_applications")
+            ->getValue(); // Retrieve all applications under this employee
 
-            if (!$applications) {
-                return response()->json(['message' => 'No job applications found'], 404);
-            }
-
-            return response()->json($applications, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not retrieve your job applications: ' . $e->getMessage()], 400);
+        // If no applications are found, return a message
+        if (!$applications) {
+            return response()->json(['message' => 'No job applications found'], 404);
         }
+
+        // Convert the Firebase data structure to a simple array of values (removing the keys)
+        $applicationsArray = array_values($applications);
+
+        // Return the applications in the desired format
+        return response()->json($applicationsArray, 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Could not retrieve your job applications: ' . $e->getMessage()], 400);
     }
+}
+
 
     /**
      * Extract the UID of the authenticated user from the request.
@@ -54,7 +60,7 @@ class JobApplicationController extends Controller
         $verifiedIdToken = $this->auth->verifyIdToken($idToken);
         return $verifiedIdToken->claims()->get('sub');
     }
-    
+
     /**
      * Check if the user is an employee.
      */
@@ -78,35 +84,82 @@ class JobApplicationController extends Controller
             // Ensure the UID belongs to an employee
             $this->ensureEmployee($uid);
     
-            // Get reference and auto-generated ID for the application
-            $applicationRef = $this->database
-                ->getReference("/users/employers/{$employerId}/job_postings/{$jobPostingId}/applications")
-                ->push();
+            // Reference to all job applications for the employee
+            $employeeApplicationsRef = $this->database
+                ->getReference("/users/employees/{$uid}/job_applications/")
+                ->getValue();
+    
+            // Check if the employee has already applied to this job
+            if (!empty($employeeApplicationsRef)) {
+                foreach ($employeeApplicationsRef as $application) {
+                    if (isset($application['job_id']) && $application['job_id'] === $jobPostingId) {
+                        return response()->json(['error' => 'You have already applied to this job posting'], 409);
+                    }
+                }
+            }
+    
+            // Get the job details based on jobPostingId
+            $jobPostRef = $this->database->getReference("/users/employers/{$employerId}/jobs/{$jobPostingId}")->getValue();
             
+            if (empty($jobPostRef)) {
+                return response()->json(['error' => 'Job posting not found'], 404);
+            }
+    
+            // Get the employer details (name, email, etc.)
+            $employerRef = $this->database->getReference("/users/employers/{$employerId}")->getValue();
+            if (empty($employerRef)) {
+                return response()->json(['error' => 'Employer not found'], 404);
+            }
+    
+            // Get the employee details (name, email, etc.)
+            $employeeRef = $this->database->getReference("/users/employees/{$uid}")->getValue();
+            if (empty($employeeRef)) {
+                return response()->json(['error' => 'Employee not found'], 404);
+            }
+    
+            // Get reference and auto-generated ID for the new application
+            $applicationRef = $this->database
+                ->getReference("/users/employers/{$employerId}/jobs/{$jobPostingId}/applications")
+                ->push();
+    
             $applicationId = $applicationRef->getKey();
     
-            // Prepare the data to be stored
+            // Prepare the data to be stored, including job and user details
             $applicationData = [
                 'application_id' => $applicationId,
-                'employee_uid' => $uid,
-                'employer_uid' => $employerId,
+                'employee_name' => $employeeRef['name'] ?? null,  // Null coalescing operator for null checks
+                'employee_email' => $employeeRef['email'] ?? null,
+                'employee_resume' => $employeeRef['resume'] ?? null,
+                'employer_name' => $employerRef['name'] ?? null,
+                'employer_email' => $employerRef['email'] ?? null,
+                'employer_logo' => $employerRef['company_logo'] ?? null,
                 'job_id' => $jobPostingId,
+                'job_title' => $jobPostRef['job_title'] ?? null,
+                'job_description' => $jobPostRef['job_description'] ?? null,
+                'location' => $jobPostRef['location'] ?? null,
+                'salary' => $jobPostRef['salary'] ?? null,
+                'skills_required' => $jobPostRef['skills_required'] ?? null,
                 'created_at' => now(),
             ];
+            
     
-            // Save the data using the reference
+            // Save the application data under the employer's job posting reference
             $applicationRef->set($applicationData);
     
-            // Save the job application in employee's reference
+            // Save the job application under the employee's reference
             $this->database
-                ->getReference("/users/employees/{$uid}/job_applications/{$applicationId}")
-                ->set($applicationData);
+                ->getReference("/users/employees/{$uid}/job_applications/")
+                ->push($applicationData);
     
-            return response()->json(['message' => 'Job application created successfully', 'application_id' => $applicationId, 'application_data' => $applicationData], 201);
+            return response()->json([
+                'application_data' => $applicationData
+            ], 201);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Could not create job application: ' . $e->getMessage()], 400);
         }
     }
+    
+    
 
 
     /**
