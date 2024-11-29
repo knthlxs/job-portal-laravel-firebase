@@ -78,7 +78,7 @@ class JobPostController extends Controller
                 $employerData = $this->database->getReference('/users/employers/' . $uid)->getValue();
                 if ($employerData) {
                     $userType = 'employer';
-                    $userData = $employerData;
+                    // $userData = $employerData;
                 } else {
                     return response()->json(['error' => 'User not found'], 404);
                 }
@@ -93,15 +93,17 @@ class JobPostController extends Controller
             $validatedData = $request->validate([
                 'job_title' => 'required|string|max:255',
                 'job_description' => 'required|string',
-                'salary' => 'required|numeric',
+                'max_salary' => 'required|numeric',
+                'min_salary' => 'required|numeric',
+                'employment_type' => 'required|string',
                 'location' => 'required|string',
                 'skills_required' => 'required|string',
             ]);
 
-            
+
             // Get reference for the new job
             $newJobRef = $this->database->getReference('/users/employers/' . $uid . '/jobs')->push();
-            
+
             // Get the auto-generated key
             $jobId = $newJobRef->getKey();
 
@@ -110,7 +112,9 @@ class JobPostController extends Controller
                 'job_id' => $jobId,  // Now using the auto-generated key
                 'job_title' => $validatedData['job_title'],
                 'job_description' => $validatedData['job_description'],
-                'salary' => $validatedData['salary'],
+                'max_salary' => $validatedData['max_salary'],
+                'min_salary' => $validatedData['min_salary'],
+                'employment_type' => $validatedData['employment_type'],
                 'location' => $validatedData['location'],
                 'skills_required' => $validatedData['skills_required'],
                 'employer_uid' => $uid,
@@ -164,7 +168,9 @@ class JobPostController extends Controller
             $validatedData = $request->validate([
                 'job_title' => 'sometimes|string|max:255',
                 'job_description' => 'sometimes|string',
-                'salary' => 'sometimes|numeric',
+                'max_salary' => 'sometimes|numeric',
+                'min_salary' => 'sometimes|numeric',
+                'employment_type' => 'sometimes|string',
                 'location' => 'sometimes|string',
                 'skills_required' => 'sometimes|string',
             ]);
@@ -237,22 +243,21 @@ class JobPostController extends Controller
     }
 
     // Show job post by id
-    public function showJobPostById(Request $request, $employer_uid, $job_id) {
-         // Extract the Authorization token from the request header
-         $authHeader = $request->header('Authorization');
-         if (!$authHeader) {
-             return response()->json(['error' => 'Authorization token missing'], 401);
-         }
+    public function showJobPostById(Request $request, $employer_uid, $job_id)
+    {
+        // Extract the Authorization token from the request header
+        $authHeader = $request->header('Authorization');
+        if (!$authHeader) {
+            return response()->json(['error' => 'Authorization token missing'], 401);
+        }
 
-         try {
-            $jobPost = $this->database->getReference('/users/employers/'.$employer_uid.'/jobs/'.$job_id)->getValue();
+        try {
+            $jobPost = $this->database->getReference('/users/employers/' . $employer_uid . '/jobs/' . $job_id)->getValue();
 
             // $jobPostArray = array_values($jobPost);
             return response()->json($jobPost, 200);
-
-         } catch (\Exception $e) {
+        } catch (\Exception $e) {
             return response()->json(['error' => 'Could not view job post: ' . $e->getMessage()], 400);
-
-         }
+        }
     }
 }

@@ -93,41 +93,23 @@ class EmployerController extends Controller
     /**
      * View a specific employer's public profile by uid.
      */
-    public function getEmployerProfile(Request $request, string $employerId)
+    public function showOwnedJobPosts(Request $request)
     {
         try {
             // Verify the user and retrieve their UID
-            // $uid = $this->getAuthenticatedUserUid($request);
+            $uid = $this->getAuthenticatedUserUid($request);
 
-            // Ensure the user is an employee
-            // $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
-            // if (!$employeeData) {
-            //     return response()->json(['error' => 'Only employees can view employer profiles'], 403);
-            // }
+            // Ensure the user is an employer
+            $this->ensureEmployer($uid);
 
-            // Get the specific employer's data
-            $employer = $this->database->getReference("/users/employers/{$employerId}")->getValue();
-
-            // if (!$employer) {
-            //     return response()->json(['error' => 'Employer not found'], 404);
-            // }
-
-            // Transform the data to include only public information
-            $transformedEmployer = [
-                'employer_uid' => $employerId,
-                'name' => $employer['name'] ?? null,
-                'industry' => $employer['industry'] ?? null,
-                'location' => $employer['location'] ?? null,
-                'company_logo' => $employer['company_logo'] ?? null,
-                'contact_person_name' => $employer['contact_person_name'] ?? null,
-
-                // Get active job postings for this employer
-                // 'job_postings' => isset($employer['jobs']) ? array_values($employer['jobs']) : [],
-            ];
-
-            return response()->json( $transformedEmployer, 200);
+            // Get all jobs owned by the employer who logged in
+            $employer = $this->database->getReference("/users/employers/{$uid}/jobs")->getValue();
+            if (!$employer) {
+                return response()->json(['error' => 'You do not have any job posting yet.'], 400);
+            }
+            return response()->json($employer, 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not fetch employer profile: ' . $e->getMessage()], 400);
+            return response()->json(['error' => $e->getMessage()], 401);
         }
     }
 
@@ -207,7 +189,9 @@ class EmployerController extends Controller
                 // Delete the old logo if it exists
                 if ($companyLogoUrl) {
                     $path = parse_url($companyLogoUrl, PHP_URL_PATH);
-                    $fileName = basename($path);
+                    $decodedPath = urldecode($path); // Decode the URL-encoded path
+
+                    $fileName = basename($decodedPath);
 
                     $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
                     if ($storageObject->exists()) {
@@ -285,18 +269,22 @@ class EmployerController extends Controller
                 return response()->json(['error' => 'Employer profile not found'], 404);
             }
 
-            // Check if a resume file exists for the employee
-            if (isset($employeeData['company_logo'])) {
-                $resumeUrl = $employerData['company_logo'];
+            // Check if a companyLogo file exists for the employee
+            if (isset($employerData['company_logo'])) {
+                $companyLogoUrl = $employerData['company_logo'];
 
                 // Extract the path from the URL
-                $path = parse_url($resumeUrl, PHP_URL_PATH);
+                $path = parse_url($companyLogoUrl, PHP_URL_PATH);
+                $decodedPath = urldecode($path); // Decode the URL-encoded path
 
                 // Extract the filename from the path
-                $fileName = basename($path);
+                $fileName = basename($decodedPath);
 
-                // Delete the resume file from Firebase Storage
-                $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName)->delete();
+                // Delete the companyLogo file from Firebase Storage
+                $storageObject = $this->storage->getBucket()->object('company_logos/' . $uid . '/' . $fileName);
+                if ($storageObject->exists()) {
+                    $storageObject->delete();
+                }
             }
 
             // Delete the employer's data from the database
@@ -330,8 +318,8 @@ class EmployerController extends Controller
             // Validate the input
             $validatedData = $request->validate([
                 'current_password' => 'required|string',
-                'new_password' => 'required|string|min:6|different:current_password',
-                'confirm_password' => 'required|string|min:6|same:new_password',
+                'new_password' => 'required|string|min:8|different:current_password',
+                'confirm_password' => 'required|string|min:8|same:new_password',
             ]);
 
             // Retrieve the user's email from Firebase Authentication

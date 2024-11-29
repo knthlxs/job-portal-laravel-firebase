@@ -96,13 +96,13 @@ class EmployeeController extends Controller
     {
         try {
             // Verify the user and retrieve their UID
-            // $uid = $this->getAuthenticatedUserUid($request);
+            $uid = $this->getAuthenticatedUserUid($request);
 
             // Ensure the user is an employer
-            // $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
-            // if (!$employerData) {
-            //     return response()->json(['error' => 'Only employers can view employee profiles'], 403);
-            // }
+            $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            if (!$employerData) {
+                return response()->json(['error' => 'Only employers can view employee profiles'], 403);
+            }
 
             // Get the specific employee's data
             $employee = $this->database->getReference("/users/employees/{$employeeId}")->getValue();
@@ -117,9 +117,11 @@ class EmployeeController extends Controller
                 'name' => $employee['name'] ?? null,
                 'email' => $employee['email'] ?? null,
                 'location' => $employee['location'] ?? null,
+                'birthday' => $employee['birthday'] ?? null,
+                'phone_number' => $employee['phone_number'] ?? null,
                 'skills' => $employee['skills'] ?? null,
-                // 'resume' => $employee['resume'] ?? null,
-                // Add any other fields that should be visible to employers
+                'resume' => $employee['resume'] ?? null,
+                'profile_picture' => $employee['profile_picture'] ?? null,
             ];
 
             return response()->json(['data' => $transformedEmployee], 200);
@@ -183,6 +185,7 @@ class EmployeeController extends Controller
                 'location' => 'sometimes|string|max:255',
                 'skills' => 'sometimes|string',
                 'resume' => 'sometimes|file|mimes:png,jpeg,jpg,pdf|max:10240',
+                'profile_picture' => 'sometimes|file|mimes:png,jpeg,jpg,pdf|max:10240',
             ]);
 
             // Update email in Firebase Authentication if it has changed
@@ -201,9 +204,11 @@ class EmployeeController extends Controller
                 // Delete the old resume if it exists
                 if (!empty($resumeUrl)) {
                     $path = parse_url($resumeUrl, PHP_URL_PATH);
-                    $fileName = basename($path);
+                    $decodedPath = urldecode($path); // Decode the URL-encoded path
+                  
+                    $fileName = basename($decodedPath);
 
-                    $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
+                    $storageObject = $this->storage->getBucket()->object("resumes/$uid/$fileName");
                     if ($storageObject->exists()) {
                         $storageObject->delete();
                     }
@@ -228,6 +233,42 @@ class EmployeeController extends Controller
                 }
             }
 
+            // Handle the resume file upload and old profile picture deletion
+            $profilePictureUrl = $employeeData['profile_picture'] ?? null; // Use existing profile picture URL or default to null
+
+            if ($request->hasFile('profile_picture')) {
+                // Delete the old profile picture if it exists
+                if (!empty($profilePictureUrl)) {
+                    $path = parse_url($profilePictureUrl, PHP_URL_PATH);
+                    $decodedPath = urldecode($path); // Decode the URL-encoded path
+                  
+                    $fileName = basename($decodedPath);
+
+                    $storageObject = $this->storage->getBucket()->object('profile_pictures/' . $uid . '/' . $fileName);
+                    if ($storageObject->exists()) {
+                        $storageObject->delete();
+                    }
+                }
+
+                // Process the new profile picture file
+                $file = $request->file('profile_picture');
+                $filePath = $file->getPathname();
+                $fileName = 'profile_pictures/' . $uid . '/' . time() . '_' . $file->getClientOriginalName();
+
+                try {
+                    $bucket = $this->storage->getBucket();
+                    $object = $bucket->upload(
+                        fopen($filePath, 'r'),
+                        ['name' => $fileName]
+                    );
+
+                    // Generate a long-lived signed URL for the new file
+                    $profilePictureUrl = $object->signedUrl(new \DateTime('+10 years'));
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Profile picture upload failed: ' . $e->getMessage()], 500);
+                }
+            }
+
             // Prepare the data to be updated
             $updatedData = [
                 'user_type' => 'employee',
@@ -238,6 +279,7 @@ class EmployeeController extends Controller
                 'location' => $request->input('location', $employeeData['location']),
                 'skills' => $request->input('skills', $employeeData['skills']),
                 'resume' => $request->hasFile('resume') ? $resumeUrl : $employeeData['resume'], // Always use updated or existing resume URL
+                'profile_picture' => $request->hasFile('profile_picture') ? $profilePictureUrl : $employeeData['profile_picture'], // Always use updated or existing profile picture URL
             ];
 
             // Update the employee's profile in Firebase
@@ -281,12 +323,36 @@ class EmployeeController extends Controller
 
                 // Extract the path from the URL
                 $path = parse_url($resumeUrl, PHP_URL_PATH);
+                $decodedPath = urldecode($path); // Decode the URL-encoded path
+
 
                 // Extract the filename from the path
-                $fileName = basename($path);
+                $fileName = basename($decodedPath);
 
                 // Delete the resume file from Firebase Storage
-                $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName)->delete();
+                $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
+                if($storageObject->exists()) 
+                {
+                    $storageObject->delete();
+                }
+            }
+
+            // Check if a profile picture file exists for the employee
+            if (isset($employeeData['profile_picture'])) {
+                $profilePictureUrl = $employeeData['profile_picture'];
+            
+                // Extract and decode the path from the URL
+                $path = parse_url($profilePictureUrl, PHP_URL_PATH);
+                $decodedPath = urldecode($path); // Decode the URL-encoded path
+            
+                // Extract the filename from the decoded path
+                $fileName = basename($decodedPath);
+            
+                // Delete the profile picture file from Firebase Storage
+                $storageObject = $this->storage->getBucket()->object("profile_pictures/$uid/$fileName");
+                if ($storageObject->exists()) {
+                    $storageObject->delete();
+                } 
             }
 
             // Delete the employee's data from the database
@@ -323,8 +389,8 @@ class EmployeeController extends Controller
             // Validate the input
             $validatedData = $request->validate([
                 'current_password' => 'required|string',
-                'new_password' => 'required|string|min:6|different:current_password',
-                'confirm_password' => 'required|string|min:6|same:new_password',
+                'new_password' => 'required|string|min:8|different:current_password',
+                'confirm_password' => 'required|string|min:8|same:new_password',
             ]);
 
             // Retrieve the user's email from Firebase Authentication

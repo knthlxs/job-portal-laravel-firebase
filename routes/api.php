@@ -37,7 +37,7 @@ Route::prefix('employee')->group(function () {
 
     // New routes for viewing employees
     Route::get('/all', [EmployeeController::class, 'listEmployees']); // Get list of all employees (for both employees and employers)
-    Route::get('/{employeeId}', [EmployeeController::class, 'getEmployeeProfile']); // Get specific employee profile (for both employees and employers)
+    Route::get('/{employeeId}', [EmployeeController::class, 'getEmployeeProfile']); // Get specific employee profile (only for employers)
 });
 
 // Employer Profile Endpoints (All routes will start at /employers/)
@@ -49,7 +49,8 @@ Route::prefix('employer')->group(function () {
 
        // New routes for viewing employers
        Route::get('/all', [EmployerController::class, 'listEmployers']); // Get list of all employers (for both employees and employers)
-       Route::get('/{employerId}', [EmployerController::class, 'getEmployerProfile']); // Get specific employer profile (for both employees and employers) 
+    //    Route::get('/{employerId}', [EmployerController::class, 'getEmployerProfile']); // Get specific employer profile (for both employees and employers) 
+    Route::get('/view-job-postings', [EmployerController::class,'showOwnedJobPosts']);
 
     Route::get('/{employer_uid}/jobs/{job_id}', [JobPostController::class, 'showJobPostById']);
 
@@ -58,8 +59,8 @@ Route::prefix('employer')->group(function () {
 // Job Application Endpoints (All routes will start at /employers/{employerId}/jobs/{jobPostingId}/applications/)
 Route::prefix('/employers/{employerId}/jobs/{jobPostingId}/applications')->group(function () {
     Route::post('/', [JobApplicationController::class, 'store']); // Create a job application for a specific job posting (only for employees) - This route will let employee apply for the job posting from employer
-    Route::get('/', [JobApplicationController::class, 'index']); // Get all job applications for a specific job posting (only for employers) - This route will let employers who own job posting see who apply for their job posting
+    Route::get('/', [JobApplicationController::class, 'show']); // Get all job applications for a specific job posting (only for employers) - This route will let employers who own job posting see who apply for their job posting
 
-    // Route::put('/{applicationId}', [JobApplicationController::class, 'update']); // Update a specific job application (only for employers)
+    Route::put('/{applicationId}', [JobApplicationController::class, 'update']); // Update a specific job application (only for employers)
     // Route::delete('/{applicationId}', [JobApplicationController::class, 'destroy']); // Delete a specific job application (only for employers)
 });
