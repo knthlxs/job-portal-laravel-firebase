@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use Exception;
 
 class JobPostController extends Controller
 {
@@ -44,8 +46,13 @@ class JobPostController extends Controller
             }
 
             return response()->json($allJobPosts, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not fetch job posts: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -126,8 +133,13 @@ class JobPostController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -191,8 +203,13 @@ class JobPostController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update job post: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -225,7 +242,7 @@ class JobPostController extends Controller
             }
 
             // Check if the employer is the one who created the job post
-            if ($jobPost['employer_id'] !== $uid) {
+            if ($jobPost['employer_uid'] !== $uid) {
                 return response()->json(['error' => 'You can only delete your own job posts'], 403);
             }
 
@@ -237,8 +254,13 @@ class JobPostController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not delete job post: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -256,8 +278,13 @@ class JobPostController extends Controller
 
             // $jobPostArray = array_values($jobPost);
             return response()->json($jobPost, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not view job post: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

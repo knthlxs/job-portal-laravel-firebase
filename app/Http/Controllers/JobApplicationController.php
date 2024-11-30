@@ -5,7 +5,8 @@ namespace App\Http\Controllers;
 use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Exception;
 
 class JobApplicationController extends Controller
 {
@@ -41,11 +42,45 @@ class JobApplicationController extends Controller
 
             // Return the applications in the desired format
             return response()->json($applicationsArray, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not retrieve your job applications: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
+    public function viewAllEmployeeApplications(Request $request, $jobPostId)
+    {
+        try {
+            $uid = $this->getAuthenticatedUserUid($request);
+            $this->ensureEmployer($uid);
+
+            $applications = $this->database->getReference("users/employers/{$uid}/jobs/{$jobPostId}/applications")->getValue();
+
+            // Handle null/empty applications
+            $applicationsArray = [];
+            if ($applications && is_array($applications)) {
+                foreach ($applications as $application) {
+                    if (is_array($application)) {
+                        $applicationsArray[] = $application;
+                    }
+                }
+            }
+
+            return response()->json($applicationsArray, 200);
+
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
      * Extract the UID of the authenticated user from the request.
@@ -54,11 +89,13 @@ class JobApplicationController extends Controller
     {
         $authHeader = $request->header('Authorization');
         if (!$authHeader) {
-            throw new \Exception('Authorization token missing');
+            throw new Exception('Authorization token missing');
         }
+        
         $idToken = str_replace('Bearer ', '', $authHeader);
         $verifiedIdToken = $this->auth->verifyIdToken($idToken);
-        return $verifiedIdToken->claims()->get('sub');
+        
+        return $verifiedIdToken->claims()->get('sub');  // Returns the Firebase UID
     }
 
     /**
@@ -66,9 +103,18 @@ class JobApplicationController extends Controller
      */
     private function ensureEmployee(string $uid)
     {
-        $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
-        if (!$employeeData) {
-            throw new \Exception('User is not an employee or does not exist');
+        try {
+            $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
+            if (!$employeeData) {
+                throw new Exception('User is not an employee or does not exist');
+            }
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -77,9 +123,18 @@ class JobApplicationController extends Controller
      */
     private function ensureEmployer(string $uid)
     {
-        $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
-        if (!$employerData) {
-            throw new \Exception('User is not an employer or does not exist');
+        try {
+            $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            if (!$employerData) {
+                throw new Exception('User is not an employer or does not exist');
+            }
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -180,8 +235,13 @@ class JobApplicationController extends Controller
             return response()->json([
                 'application_data' => $applicationData
             ], 201);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not create job application: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -210,8 +270,13 @@ class JobApplicationController extends Controller
             }
 
             return response()->json($applications, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not retrieve job applications: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -260,8 +325,13 @@ class JobApplicationController extends Controller
             // $this->database->getReference()->remove();
 
             return response()->json(['message' => 'Job application updated successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update job application: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -298,8 +368,13 @@ class JobApplicationController extends Controller
     //         $this->database->getReference("/users/employers/{$employerId}/job_postings/{$jobPostingId}/applications/{$applicationId}")->remove();
 
     //         return response()->json(['message' => 'Job application deleted successfully'], 200);
-    //     } catch (\Exception $e) {
-    //         return response()->json(['error' => 'Could not delete job application: ' . $e->getMessage()], 400);
-    //     }
+    //     } catch (ValidationException $e) {
+    //     return response()->json(['validation error' => $e->errors()], 422);
+    // } catch (Exception $e) {
+    //     return response()->json([
+    //         'error' => 'An unexpected error occurred',
+    //         'message' => $e->getMessage()
+    //     ], 500);
+    // }
     // }
 }

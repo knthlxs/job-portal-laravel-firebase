@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use App\Services\FirebaseStorageService;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -22,30 +24,20 @@ class AuthController extends Controller
 
     public function signUp(Request $request)
     {
-        $validatedData = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|min:8',
-            'confirm_password' => 'required|same:password',
-            'user_type' => 'required|in:employee,employer',
-            'resume' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
-            'company_logo' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
-            'profile_picture' => 'nullable|file|mimes:png,jpeg,jpg|max:10240',
-            'name' => 'required|string',
-            'phone_number' => 'required|string',
-            'location' => 'required|string',
-        ]);
-
-        // if (
-        //     is_array($request->file('resume')) ||
-        //     is_array($request->file('company_logo')) ||
-        //     is_array($request->file('profile_picture'))
-        // ) {
-        //     return response()->json([
-        //         'error' => 'Only one file can be uploaded for each field.'
-        //     ], 400);
-        // }
-
         try {
+            $validatedData = $request->validate([
+                'email' => 'required|email',
+                'password' => 'required|min:8',
+                'confirm_password' => 'required|same:password',
+                'user_type' => 'required|in:employee,employer',
+                'resume' => 'nullable|file|mimes:png,jpeg,jpg,pdf|max:10240',
+                'company_logo' => 'nullable|file|mimes:png,jpeg,jpg,pdf|max:10240',
+                'profile_picture' => 'nullable|file|mimes:png,jpeg,jpg,pdf|max:10240',
+                'name' => 'required|string',
+                'phone_number' => 'required|string',
+                'location' => 'required|string',
+            ]);
+
             $user = $this->auth->createUserWithEmailAndPassword(
                 $validatedData['email'],
                 $validatedData['password']
@@ -55,7 +47,7 @@ class AuthController extends Controller
             $profilePictureUrl = null;
             $companyLogoUrl = null;
 
-             // Handle profile picture upload for employees
+            // Handle profile picture upload for employees
             if ($validatedData['user_type'] == 'employee' && $request->hasFile('profile_picture')) {
                 $file = $request->file('profile_picture');
                 $filePath = $file->getPathname();
@@ -152,6 +144,13 @@ class AuthController extends Controller
             ], 201);
         } catch (\Kreait\Firebase\Exception\AuthException $e) {
             return response()->json(['error' => $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -160,13 +159,12 @@ class AuthController extends Controller
     // Log in a user with email and password
     public function signIn(Request $request)
     {
-        // Validate the request input
-        $validatedData = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
-
         try {
+            // Validate the request input
+            $validatedData = $request->validate([
+                'email' => 'required|email',
+                'password' => 'required',
+            ]);
             // Sign in the user with email and password using Firebase Authentication
             $signInResult = $this->auth->signInWithEmailAndPassword(
                 $validatedData['email'],
@@ -195,9 +193,14 @@ class AuthController extends Controller
             ], 200);
         } catch (\Kreait\Firebase\Exception\AuthException $e) {
             // Handle Firebase authentication errors
-            return response()->json(['error' => 'Authentication failed: ' . $e->getMessage()], 400);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 401);
+            return response()->json(['authentication error' => 'Authentication failed: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -207,9 +210,10 @@ class AuthController extends Controller
     // Verify ID Token (to validate authentication)
     public function verifyToken(Request $request)
     {
-        $idToken = $request->input('id_token');
 
         try {
+            $idToken = $request->input('id_token');
+
             // Verify the Firebase ID token
             $verifiedIdToken = $this->auth->verifyIdToken($idToken);
             return response()->json([
@@ -218,6 +222,13 @@ class AuthController extends Controller
             ], 200);
         } catch (\Kreait\Firebase\Exception\AuthException $e) {
             return response()->json(['error' => 'Invalid token: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -226,13 +237,17 @@ class AuthController extends Controller
      */
     private function getAuthenticatedUserUid(Request $request)
     {
-        $authHeader = $request->header('Authorization');
-        if (!$authHeader) {
-            throw new \Exception('Authorization token missing');
+        try {
+            $authHeader = $request->header('Authorization');
+            if (!$authHeader) {
+                throw new Exception('Authorization token missing');
+            }
+            $idToken = str_replace('Bearer ', '', $authHeader);
+            $verifiedIdToken = $this->auth->verifyIdToken($idToken); // Verify ID Token (to validate authentication)
+            return $verifiedIdToken->claims()->get('sub');
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
         }
-        $idToken = str_replace('Bearer ', '', $authHeader);
-        $verifiedIdToken = $this->auth->verifyIdToken($idToken); // Verify ID Token (to validate authentication)
-        return $verifiedIdToken->claims()->get('sub');
     }
 
     public function logout(Request $request)
@@ -246,10 +261,30 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'User logged out successfully'
             ], 200);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'error' => 'Logout failed: ' . $e->getMessage()
             ], 400);
+        }
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => ['required', 'email']
+            ]);
+            $this->auth->sendPasswordResetLink($request->email);
+            return response()->json([
+                'message' => 'Password reset link has been sent to your email'
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

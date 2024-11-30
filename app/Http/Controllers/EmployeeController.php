@@ -6,8 +6,8 @@ use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
-use Kreait\Firebase\Factory;
-use Kreait\Firebase\Auth;
+use Illuminate\Validation\ValidationException;
+use Exception;
 
 class EmployeeController extends Controller
 {
@@ -27,13 +27,22 @@ class EmployeeController extends Controller
      */
     private function getAuthenticatedUserUid(Request $request)
     {
-        $authHeader = $request->header('Authorization');
-        if (!$authHeader) {
-            throw new \Exception('Authorization token missing');
+        try {
+            $authHeader = $request->header('Authorization');
+            if (!$authHeader) {
+                throw new Exception('Authorization token missing');
+            }
+            $idToken = str_replace('Bearer ', '', $authHeader);
+            $verifiedIdToken = $this->auth->verifyIdToken($idToken); // Verify ID Token (to validate authentication)
+            return $verifiedIdToken->claims()->get('sub');
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
-        $idToken = str_replace('Bearer ', '', $authHeader);
-        $verifiedIdToken = $this->auth->verifyIdToken($idToken); // Verify ID Token (to validate authentication)
-        return $verifiedIdToken->claims()->get('sub');
     }
 
     /**
@@ -41,9 +50,16 @@ class EmployeeController extends Controller
      */
     private function ensureEmployee(string $uid)
     {
-        $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
-        if (!$employeeData) {
-            throw new \Exception('User is not an employee or does not exist');
+        try {
+            $employeeData = $this->database->getReference("/users/employees/{$uid}")->getValue();
+            if (!$employeeData) {
+                throw new Exception('User is not an employee or does not exist');
+            }
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -84,7 +100,7 @@ class EmployeeController extends Controller
             }
 
             return response()->json($transformedEmployees, 200);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json(['error' => 'Could not fetch employees: ' . $e->getMessage()], 400);
         }
     }
@@ -125,7 +141,7 @@ class EmployeeController extends Controller
             ];
 
             return response()->json(['data' => $transformedEmployee], 200);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json(['error' => 'Could not fetch employee profile: ' . $e->getMessage()], 400);
         }
     }
@@ -151,7 +167,7 @@ class EmployeeController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json(['error' => 'Could not fetch employee: ' . $e->getMessage()], 400);
         }
     }
@@ -205,7 +221,7 @@ class EmployeeController extends Controller
                 if (!empty($resumeUrl)) {
                     $path = parse_url($resumeUrl, PHP_URL_PATH);
                     $decodedPath = urldecode($path); // Decode the URL-encoded path
-                  
+
                     $fileName = basename($decodedPath);
 
                     $storageObject = $this->storage->getBucket()->object("resumes/$uid/$fileName");
@@ -228,7 +244,7 @@ class EmployeeController extends Controller
 
                     // Generate a long-lived signed URL for the new file
                     $resumeUrl = $object->signedUrl(new \DateTime('+10 years'));
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     return response()->json(['error' => 'Resume upload failed: ' . $e->getMessage()], 500);
                 }
             }
@@ -241,7 +257,7 @@ class EmployeeController extends Controller
                 if (!empty($profilePictureUrl)) {
                     $path = parse_url($profilePictureUrl, PHP_URL_PATH);
                     $decodedPath = urldecode($path); // Decode the URL-encoded path
-                  
+
                     $fileName = basename($decodedPath);
 
                     $storageObject = $this->storage->getBucket()->object('profile_pictures/' . $uid . '/' . $fileName);
@@ -264,7 +280,7 @@ class EmployeeController extends Controller
 
                     // Generate a long-lived signed URL for the new file
                     $profilePictureUrl = $object->signedUrl(new \DateTime('+10 years'));
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     return response()->json(['error' => 'Profile picture upload failed: ' . $e->getMessage()], 500);
                 }
             }
@@ -278,16 +294,21 @@ class EmployeeController extends Controller
                 'phone_number' => $request->input('phone_number', $employeeData['phone_number']),
                 'location' => $request->input('location', $employeeData['location']),
                 'skills' => $request->input('skills', $employeeData['skills']),
-                'resume' => $request->hasFile('resume') ? $resumeUrl : $employeeData['resume'], // Always use updated or existing resume URL
-                'profile_picture' => $request->hasFile('profile_picture') ? $profilePictureUrl : $employeeData['profile_picture'], // Always use updated or existing profile picture URL
+                'resume' => $request->hasFile('resume') ? $resumeUrl : ($employeeData['resume'] ?? null),
+                'profile_picture' => $request->hasFile('profile_picture') ? $profilePictureUrl : ($employeeData['profile_picture'] ?? null),
             ];
 
             // Update the employee's profile in Firebase
             $this->database->getReference("/users/employees/{$uid}")->update($updatedData);
 
             return response()->json($updatedData, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update employee: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -331,8 +352,7 @@ class EmployeeController extends Controller
 
                 // Delete the resume file from Firebase Storage
                 $storageObject = $this->storage->getBucket()->object('resumes/' . $uid . '/' . $fileName);
-                if($storageObject->exists()) 
-                {
+                if ($storageObject->exists()) {
                     $storageObject->delete();
                 }
             }
@@ -340,19 +360,19 @@ class EmployeeController extends Controller
             // Check if a profile picture file exists for the employee
             if (isset($employeeData['profile_picture'])) {
                 $profilePictureUrl = $employeeData['profile_picture'];
-            
+
                 // Extract and decode the path from the URL
                 $path = parse_url($profilePictureUrl, PHP_URL_PATH);
                 $decodedPath = urldecode($path); // Decode the URL-encoded path
-            
+
                 // Extract the filename from the decoded path
                 $fileName = basename($decodedPath);
-            
+
                 // Delete the profile picture file from Firebase Storage
                 $storageObject = $this->storage->getBucket()->object("profile_pictures/$uid/$fileName");
                 if ($storageObject->exists()) {
                     $storageObject->delete();
-                } 
+                }
             }
 
             // Delete the employee's data from the database
@@ -369,8 +389,13 @@ class EmployeeController extends Controller
         } catch (\Google\Cloud\Core\Exception\NotFoundException $e) {
             // Handle case where the file does not exist in Firebase Storage
             return response()->json(['error' => 'Resume file not found: ' . $e->getMessage()], 404);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not delete employee profile: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -412,8 +437,13 @@ class EmployeeController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return response()->json(['error' => 'Authentication account not found'], 404);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update password: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

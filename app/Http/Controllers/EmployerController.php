@@ -6,8 +6,8 @@ use App\Services\FirebaseRealtimeDatabaseService;
 use App\Services\FirebaseAuthService;
 use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
-use Kreait\Firebase\Factory;
-use Kreait\Firebase\Auth;
+use Illuminate\Validation\ValidationException;
+use Exception;
 
 class EmployerController extends Controller
 {
@@ -27,14 +27,23 @@ class EmployerController extends Controller
      */
     private function getAuthenticatedUserUid(Request $request)
     {
-        $authHeader = $request->header('Authorization');
-        if (!$authHeader) {
-            throw new \Exception('Authorization token missing');
-        }
+        try {
+            $authHeader = $request->header('Authorization');
+            if (!$authHeader) {
+                throw new Exception('Authorization token missing');
+            }
 
-        $idToken = str_replace('Bearer ', '', $authHeader);
-        $verifiedIdToken = $this->auth->verifyIdToken($idToken);
-        return $verifiedIdToken->claims()->get('sub');
+            $idToken = str_replace('Bearer ', '', $authHeader);
+            $verifiedIdToken = $this->auth->verifyIdToken($idToken);
+            return $verifiedIdToken->claims()->get('sub');
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -42,9 +51,18 @@ class EmployerController extends Controller
      */
     private function ensureEmployer(string $uid)
     {
-        $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
-        if (!$employerData) {
-            throw new \Exception('User is not an employer or does not exist');
+        try {
+            $employerData = $this->database->getReference("/users/employers/{$uid}")->getValue();
+            if (!$employerData) {
+                throw new Exception('User is not an employer or does not exist');
+            }
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -85,8 +103,13 @@ class EmployerController extends Controller
             }
 
             return response()->json(['employers' => $transformedEmployers], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not fetch employers: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -103,13 +126,18 @@ class EmployerController extends Controller
             $this->ensureEmployer($uid);
 
             // Get all jobs owned by the employer who logged in
-            $employer = $this->database->getReference("/users/employers/{$uid}/jobs")->getValue();
-            if (!$employer) {
+            $jobs = $this->database->getReference("/users/employers/{$uid}/jobs")->getValue();
+            if (!$jobs) {
                 return response()->json(['error' => 'You do not have any job posting yet.'], 400);
             }
-            return response()->json($employer, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 401);
+            return response()->json(array_values($jobs), 200);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -137,8 +165,13 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not fetch employer: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -169,7 +202,7 @@ class EmployerController extends Controller
                 'location' => 'sometimes|string|max:255',
                 'industry' => 'sometimes|string|max:255',
                 'contact_person_name' => 'sometimes|string|max:255',
-                'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg|max:10240',
+                'company_logo' => 'sometimes|file|mimes:png,jpeg,jpg,pdf|max:10240',
             ]);
 
             // Update email in Firebase Authentication if it has changed
@@ -213,7 +246,7 @@ class EmployerController extends Controller
 
                     // Generate a long-lived signed URL for the new logo
                     $companyLogoUrl = $object->signedUrl(new \DateTime('+10 years'));
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     return response()->json(['error' => 'Company logo upload failed: ' . $e->getMessage()], 500);
                 }
             }
@@ -227,7 +260,7 @@ class EmployerController extends Controller
                 'location' => $request->input('location', $employerData['location']),
                 'industry' => $request->input('industry', $employerData['industry']),
                 'contact_person_name' => $request->input('contact_person_name', $employerData['contact_person_name']),
-                'company_logo' => $companyLogoUrl,  // Ensure the logo URL is updated if a new one is uploaded
+                'company_logo' => $request->hasFile('company_logo') ? $companyLogoUrl : ($employerData['company_logo'] ?? null),
             ];
 
             // Update the employer's profile in Firebase
@@ -238,8 +271,13 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\AuthError $e) {
             return response()->json(['error' => 'Authentication error'], 401);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update employer: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -298,8 +336,13 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return response()->json(['error' => 'Authentication account not found'], 404);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not delete employer profile: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -341,8 +384,13 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Invalid authentication token'], 401);
         } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
             return response()->json(['error' => 'Authentication account not found'], 404);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not update password: ' . $e->getMessage()], 400);
+        } catch (ValidationException $e) {
+            return response()->json(['validation error' => $e->errors()], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'An unexpected error occurred',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }
